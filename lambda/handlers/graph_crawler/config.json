@@ -1,0 +1,19 @@
+{
+  "target_hashtags": [
+    "おはようvtuber"
+  ],
+  "crawler": {
+    "users_per_hashtag": 500,
+    "rate_limit_per_second": 5,
+    "timeout_seconds": 600
+  },
+  "graph": {
+    "include_follower_relationships": true,
+    "max_edges_per_user": 100,
+    "community_detection": false
+  },
+  "storage": {
+    "s3_bucket": "bluesky-sigma-showcase",
+    "s3_prefix": "sigma-graph/"
+  }
+}
