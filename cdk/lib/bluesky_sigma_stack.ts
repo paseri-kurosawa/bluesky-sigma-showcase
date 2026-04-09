@@ -11,28 +11,26 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
+// S3BucketOrigin のインポート
+import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
+
 export class BlueskySigmaStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // === S3 Bucket for Graph Data ===
-    const graphDataBucket = new s3.Bucket(this, 'GraphDataBucket', {
-      bucketName: `bluesky-sigma-showcase-${cdk.Aws.ACCOUNT_ID}`,
-      versioned: false,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
+    // === S3 Bucket for Graph Data (Import existing bucket) ===
+    const graphDataBucket = s3.Bucket.fromBucketName(
+      this,
+      'GraphDataBucket',
+      `bluesky-sigma-showcase-${cdk.Aws.ACCOUNT_ID}`
+    );
 
-    // === S3 Bucket for Frontend ===
-    const frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
-      bucketName: `bluesky-sigma-frontend-${cdk.Aws.ACCOUNT_ID}`,
-      websiteIndexDocument: 'index.html',
-      websiteErrorDocument: 'index.html',
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
+    // === S3 Bucket for Frontend (Import existing bucket) ===
+    const frontendBucket = s3.Bucket.fromBucketName(
+      this,
+      'FrontendBucket',
+      `bluesky-sigma-frontend-${cdk.Aws.ACCOUNT_ID}`
+    );
 
     // === Lambda Execution Role ===
     const lambdaExecutionRole = new iam.Role(this, 'LambdaExecutionRole', {
@@ -46,6 +44,17 @@ export class BlueskySigmaStack extends cdk.Stack {
     // Permissions: CloudWatch Logs
     lambdaExecutionRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+    );
+
+    // Permissions: Secrets Manager
+    lambdaExecutionRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:GetSecretValue'],
+        resources: [
+          `arn:aws:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:bluesky-feed-jp/credentials-*`,
+        ],
+      })
     );
 
     // === Lambda Layer (Dependencies) ===
@@ -69,7 +78,7 @@ export class BlueskySigmaStack extends cdk.Stack {
         S3_PREFIX: 'sigma-graph/',
       },
       layers: [dependenciesLayer],
-      logRetention: logs.RetentionDays.THIRTY,
+      logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
     // === Lambda: API Endpoint ===
@@ -86,7 +95,7 @@ export class BlueskySigmaStack extends cdk.Stack {
         S3_PREFIX: 'sigma-graph/',
       },
       layers: [dependenciesLayer],
-      logRetention: logs.RetentionDays.THIRTY,
+      logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
     // === API Gateway ===
@@ -100,8 +109,13 @@ export class BlueskySigmaStack extends cdk.Stack {
       },
     });
 
+    // /api/hashtags
+    const apiResource = api.root.addResource('api');
+    const hashtagsResource = apiResource.addResource('hashtags');
+    hashtagsResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
+
     // /api/graph/latest
-    const graphResource = api.root.addResource('api').addResource('graph');
+    const graphResource = apiResource.addResource('graph');
     const latestResource = graphResource.addResource('latest');
     latestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
@@ -110,21 +124,27 @@ export class BlueskySigmaStack extends cdk.Stack {
     const hashtagLatestResource = hashtagResource.addResource('latest');
     hashtagLatestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
-    // === EventBridge Rule (Daily Schedule) ===
-    const crawlerRule = new events.Rule(this, 'DailyGraphCrawlerRule', {
+    // === EventBridge Rule (Hourly Schedule) ===
+    const crawlerRule = new events.Rule(this, 'HourlyGraphCrawlerRule', {
       schedule: events.Schedule.cron({
-        hour: '0',        // 00:00 UTC (09:00 JST)
         minute: '0',
       }),
-      description: 'Daily graph crawler execution at 00:00 UTC',
+      description: 'Hourly graph crawler execution at every hour',
     });
 
     crawlerRule.addTarget(new targets.LambdaFunction(graphCrawlerLambda));
 
     // === CloudFront Distribution (Frontend) ===
+    const oai = new cloudfront.OriginAccessIdentity(this, 'FrontendOAI', {
+      comment: 'OAI for frontend bucket access',
+    });
+    frontendBucket.grantRead(oai);
+
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(frontendBucket),
+        origin: S3BucketOrigin.withOriginAccessIdentity(frontendBucket, {
+          originAccessIdentity: oai,
+        }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },

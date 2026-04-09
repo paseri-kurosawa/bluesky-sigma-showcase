@@ -8,10 +8,10 @@ from typing import List, Dict, Set, Tuple, Optional
 
 # AT Protocol
 from atproto import Client, client_utils
-from atproto.models import AppBskyActorProfile
 
 # AWS Clients
 s3_client = boto3.client('s3')
+secrets_client = boto3.client('secretsmanager', region_name='ap-northeast-1')
 
 # JST timezone
 JST = timezone(timedelta(hours=9))
@@ -66,12 +66,17 @@ def search_hashtag_posts(client: Client, hashtag: str, limit: int = 100) -> List
         search_query = f"lang:ja #{hashtag}"
         print(f"[SEARCH] Query: {search_query}")
 
-        # Search posts
-        posts = client.app.bsky.feed.search_posts(
+        # Search posts using Pydantic model from atproto client
+        from atproto_client.models.app.bsky.feed.search_posts import Params
+
+        # Import Params for search_posts
+        from atproto_client.models.app.bsky.feed.search_posts import Params as SearchParams
+
+        search_params = SearchParams(
             q=search_query,
-            limit=min(limit, 100),  # API limits to 100 per call
-            sort="latest"
+            limit=min(limit, 100)
         )
+        posts = client.app.bsky.feed.search_posts(search_params)
 
         if posts and posts.posts:
             for post in posts.posts:
@@ -106,8 +111,12 @@ def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
     profiles = {}
     for i, did in enumerate(dids):
         try:
+            # Import Params for get_profile
+            from atproto_client.models.app.bsky.actor.get_profile import Params as GetProfileParams
+
             # Rate limiting
-            profile = rate_limited_call(client.app.bsky.actor.get_profile, actor=did)
+            profile_params = GetProfileParams(actor=did)
+            profile = rate_limited_call(client.app.bsky.actor.get_profile, profile_params)
 
             # Extract relevant fields
             profiles[did] = {
@@ -118,7 +127,8 @@ def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
                 "followsCount": getattr(profile, 'follows_count', 0),
                 "postsCount": getattr(profile, 'posts_count', 0),
                 "createdAt": getattr(profile, 'created_at', ''),
-                "avatar": getattr(profile, 'avatar', '')
+                "avatar": getattr(profile, 'avatar', ''),
+                "updated_at": get_jst_now().isoformat()
             }
 
             if (i + 1) % 10 == 0:
@@ -152,11 +162,14 @@ def build_graph_edges(client: Client, dids: List[str], profiles: Dict[str, Dict]
 
     for i, did in enumerate(dids):
         try:
+            # Import Params for get_follows
+            from atproto_client.models.app.bsky.graph.get_follows import Params as GetFollowsParams
+
             # Get who this user follows (within community)
+            follows_params = GetFollowsParams(actor=did, limit=100)
             follows = rate_limited_call(
                 client.app.bsky.graph.get_follows,
-                actor=did,
-                limit=100
+                follows_params
             )
 
             if follows and follows.follows:
@@ -230,44 +243,100 @@ def generate_graph_json(
     return graph_json
 
 
+# === Step 4.5: Merge with previous data ===
+def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
+    """
+    Merge new graph data with previous accumulated data.
+
+    Args:
+        new_graph: Newly fetched graph data
+        hashtag: Hashtag name
+
+    Returns:
+        Merged graph with accumulated users and edges
+    """
+    print(f"[MERGE] Merging with previous data...")
+
+    # Try to load previous data
+    safe_hashtag = hashtag.replace("#", "").replace("/", "_")
+    s3_key_merged = f"{S3_PREFIX}{safe_hashtag}/users_merged.json"
+
+    previous_data = None
+    try:
+        response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key_merged)
+        previous_data = json.loads(response['Body'].read().decode('utf-8'))
+        print(f"[MERGE] Loaded previous data with {len(previous_data.get('nodes', []))} users")
+    except s3_client.exceptions.NoSuchKey:
+        print(f"[MERGE] No previous data found (first run)")
+    except Exception as e:
+        print(f"[MERGE ERROR] Failed to load previous data: {str(e)}")
+
+    if not previous_data:
+        print(f"[MERGE] Using new data as baseline")
+        return new_graph
+
+    # Merge nodes: existing users UPDATE, new users ADD
+    previous_nodes_dict = {node['id']: node for node in previous_data.get('nodes', [])}
+    new_nodes_dict = {node['id']: node for node in new_graph.get('nodes', [])}
+
+    # Update existing users with new profile data
+    for did, new_node in new_nodes_dict.items():
+        previous_nodes_dict[did] = new_node
+
+    merged_nodes = list(previous_nodes_dict.values())
+
+    # Merge edges: de-duplicate by (source, target) pair
+    previous_edges = previous_data.get('edges', [])
+    new_edges = new_graph.get('edges', [])
+
+    edge_set = set()
+    merged_edges_list = []
+
+    for edge in previous_edges + new_edges:
+        edge_key = (edge['source'], edge['target'], edge.get('type', 'follows'))
+        if edge_key not in edge_set:
+            edge_set.add(edge_key)
+            merged_edges_list.append(edge)
+
+    merged_graph = {
+        "nodes": merged_nodes,
+        "edges": merged_edges_list,
+        "metadata": {
+            "hashtag": hashtag,
+            "updated_at": get_jst_now().isoformat(),
+            "nodeCount": len(merged_nodes),
+            "edgeCount": len(merged_edges_list)
+        }
+    }
+
+    print(f"[MERGE] Merged result: {len(merged_nodes)} total users, {len(merged_edges_list)} total edges")
+    return merged_graph
+
+
 # === Step 5: Save to S3 ===
 def save_graph_to_s3(graph_json: Dict, hashtag: str):
     """
-    Save graph JSON to S3.
+    Save merged graph JSON to S3.
 
     Args:
-        graph_json: Graph data structure
+        graph_json: Merged graph data structure
         hashtag: Hashtag name (for filename)
     """
     try:
-        now = get_jst_now()
-        timestamp = now.strftime("%Y%m%d_%H%M%S")
-
         # Sanitize hashtag for filename
         safe_hashtag = hashtag.replace("#", "").replace("/", "_")
-        s3_key = f"{S3_PREFIX}{safe_hashtag}/{timestamp}.json"
-
-        # Also save as "latest"
-        s3_key_latest = f"{S3_PREFIX}{safe_hashtag}/latest.json"
+        s3_key_merged = f"{S3_PREFIX}{safe_hashtag}/users_merged.json"
 
         # Save to S3
         body = json.dumps(graph_json, ensure_ascii=False, indent=2)
 
         s3_client.put_object(
             Bucket=S3_BUCKET,
-            Key=s3_key,
+            Key=s3_key_merged,
             Body=body.encode('utf-8'),
             ContentType="application/json; charset=utf-8"
         )
-        print(f"[S3] Saved graph to s3://{S3_BUCKET}/{s3_key}")
-
-        s3_client.put_object(
-            Bucket=S3_BUCKET,
-            Key=s3_key_latest,
-            Body=body.encode('utf-8'),
-            ContentType="application/json; charset=utf-8"
-        )
-        print(f"[S3] Saved latest graph to s3://{S3_BUCKET}/{s3_key_latest}")
+        print(f"[S3] Saved merged graph to s3://{S3_BUCKET}/{s3_key_merged}")
 
     except Exception as e:
         print(f"[S3 ERROR] Failed to save graph: {str(e)}")
@@ -287,8 +356,25 @@ def lambda_handler(event, context):
     print(f"[HANDLER] Target hashtags: {TARGET_HASHTAGS}")
 
     try:
-        # Initialize AT Protocol client
+        # Initialize AT Protocol client with authentication
         client = Client()
+
+        # Get credentials from Secrets Manager
+        try:
+            secret = secrets_client.get_secret_value(
+                SecretId='bluesky-feed-jp/credentials'
+            )
+            credentials = json.loads(secret['SecretString'])
+            handle = credentials.get('handle')
+            app_password = credentials.get('appPassword')
+
+            # Login with correct argument names
+            client.login(login=handle, password=app_password)
+            print(f"[CLIENT] Logged in as {handle}")
+        except Exception as e:
+            print(f"[CLIENT] Warning: Could not authenticate: {str(e)}")
+            print("[CLIENT] Proceeding with unauthenticated client...")
+
         print("[CLIENT] AT Protocol client initialized")
 
         # Process each hashtag
@@ -315,8 +401,11 @@ def lambda_handler(event, context):
             # Step 4: Generate graph JSON
             graph_json = generate_graph_json(hashtag, profiles, edges)
 
+            # Step 4.5: Merge with previous data
+            merged_graph = merge_with_previous_graph(graph_json, hashtag)
+
             # Step 5: Save to S3
-            save_graph_to_s3(graph_json, hashtag)
+            save_graph_to_s3(merged_graph, hashtag)
 
         print("[HANDLER] Graph crawler completed successfully")
         return {

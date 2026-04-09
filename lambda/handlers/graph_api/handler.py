@@ -11,7 +11,7 @@ s3_client = boto3.client('s3')
 JST = timezone(timedelta(hours=9))
 
 # === Configuration ===
-S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase')
+S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase-878311109818')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'sigma-graph/')
 
 
@@ -116,8 +116,8 @@ def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
             import urllib.parse
             hashtag = urllib.parse.unquote(hashtag)
 
-        # Fetch latest graph
-        s3_key = f"{S3_PREFIX}{hashtag}/latest.json"
+        # Fetch accumulated merged graph (蓄積されたユーザー情報を使用)
+        s3_key = f"{S3_PREFIX}{hashtag}/users_merged.json"
         graph = get_graph_from_s3(s3_key)
 
         if not graph:

@@ -13,7 +13,7 @@
     "community_detection": false
   },
   "storage": {
-    "s3_bucket": "bluesky-sigma-showcase",
+    "s3_bucket": "bluesky-sigma-showcase-878311109818",
     "s3_prefix": "sigma-graph/"
   }
 }

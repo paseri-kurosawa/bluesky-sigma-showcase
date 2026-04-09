@@ -2,6 +2,7 @@
   "name": "bluesky-sigma-cdk",
   "version": "1.0.0",
   "description": "CDK stack for Bluesky Sigma Showcase",
+  "type": "commonjs",
   "main": "app.ts",
   "scripts": {
     "cdk": "cdk",
@@ -11,6 +12,7 @@
     "destroy": "cdk destroy"
   },
   "devDependencies": {
+    "@types/node": "^25.5.2",
     "aws-cdk": "^2.100.0",
     "typescript": "^5.0.0"
   },

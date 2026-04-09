@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
 import Graph from 'graphology';
-import { useGraph } from './hooks/useGraph';
 
 export default function App() {
   const containerRef = useRef(null);
@@ -73,25 +72,25 @@ export default function App() {
     // Create graph
     const graph = new Graph();
 
-    // Add nodes
-    graphData.nodes.forEach((node) => {
+    // Add nodes with random coordinates
+    graphData.nodes.forEach((node, index) => {
       graph.addNode(node.id, {
         label: node.label,
         displayName: node.displayName,
         followersCount: node.followersCount,
         followsCount: node.followsCount,
         postsCount: node.postsCount,
-        size: Math.max(5, Math.min(30, (node.followersCount || 0) / 20)),
+        size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
         color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+        x: Math.random() * 1000,
+        y: Math.random() * 1000,
       });
     });
 
     // Add edges
     graphData.edges.forEach((edge) => {
       try {
-        graph.addEdge(edge.source, edge.target, {
-          type: edge.type || 'directed',
-        });
+        graph.addEdge(edge.source, edge.target);
       } catch (err) {
         // Edge might reference non-existent node, skip
       }
@@ -105,12 +104,14 @@ export default function App() {
     // Create new Sigma instance
     try {
       const sigma = new Sigma(graph, containerRef.current, {
-        renderLabels: true,
+        renderLabels: false,
         renderEdgeLabels: false,
         defaultNodeColor: '#1da1f2',
         defaultEdgeColor: '#e1e8ed',
-        labelDensity: 0.5,
-        labelRenderedSizeThreshold: 10,
+        labelDensity: 0.1,
+        labelRenderedSizeThreshold: 8,
+        minCameraRatio: 0.1,
+        maxCameraRatio: 10,
       });
 
       sigmaRef.current = sigma;
