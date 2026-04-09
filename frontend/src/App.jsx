@@ -80,6 +80,7 @@ export default function App() {
         followersCount: node.followersCount,
         followsCount: node.followsCount,
         postsCount: node.postsCount,
+        avatar: node.avatar,
         size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
         color: `hsl(${Math.random() * 360}, 70%, 60%)`,
         x: Math.random() * 1000,
@@ -201,6 +202,11 @@ export default function App() {
               <div className="info-label">表示名</div>
               <div className="info-value">{selectedNode.displayName || 'N/A'}</div>
             </div>
+            {selectedNode.avatar && (
+              <div className="avatar-container">
+                <img src={selectedNode.avatar} alt={selectedNode.label} className="user-avatar" />
+              </div>
+            )}
 
             <h3>フォロー統計</h3>
             <div className="info-item">

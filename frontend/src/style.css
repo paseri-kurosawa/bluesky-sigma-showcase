@@ -122,6 +122,19 @@ body {
   margin-top: 0;
 }
 
+.avatar-container {
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.user-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #1da1f2;
+}
+
 .info-item {
   font-size: 0.875rem;
   margin-bottom: 0.5rem;

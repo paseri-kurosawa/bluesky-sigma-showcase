@@ -303,6 +303,7 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
         "edges": merged_edges_list,
         "metadata": {
             "hashtag": hashtag,
+            "timestamp": new_graph["metadata"]["timestamp"],
             "updated_at": get_jst_now().isoformat(),
             "nodeCount": len(merged_nodes),
             "edgeCount": len(merged_edges_list)
