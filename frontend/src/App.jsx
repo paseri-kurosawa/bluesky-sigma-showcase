@@ -17,6 +17,19 @@ export default function App() {
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
 
+  // Zoom controls
+  const handleZoomIn = () => {
+    if (sigmaRef.current) {
+      sigmaRef.current.getCamera().animatedZoom({ duration: 300, factor: 1.5 });
+    }
+  };
+
+  const handleZoomOut = () => {
+    if (sigmaRef.current) {
+      sigmaRef.current.getCamera().animatedZoom({ duration: 300, factor: 0.667 });
+    }
+  };
+
   // Fetch available hashtags
   useEffect(() => {
     const fetchHashtags = async () => {
@@ -74,8 +87,8 @@ export default function App() {
     // Create graph
     const graph = new Graph();
 
-    // Add nodes with placeholder coordinates
-    graphData.nodes.forEach((node, index) => {
+    // Add nodes
+    graphData.nodes.forEach((node) => {
       graph.addNode(node.id, {
         label: node.label,
         displayName: node.displayName,
@@ -106,13 +119,11 @@ export default function App() {
         console.warn('[Edge Error]', edge, err.message);
       }
     });
-    console.log(`[Graph] Nodes: ${graph.order}, Edges: ${edgeCount} (Mutual: ${mutualCount}, Unilateral: ${edgeCount - mutualCount})`);
 
     // Apply layouts: random first, then ForceAtlas2
     try {
       // Step 1: Initialize with random layout
       random.assign(graph);
-      console.log('[Layout] Random initialization applied');
 
       // Step 2: Apply ForceAtlas2 force-directed layout
       const settings = forceAtlas2.inferSettings(graph);
@@ -120,7 +131,6 @@ export default function App() {
         iterations: 150,
         settings: settings,
       });
-      console.log('[Layout] ForceAtlas2 applied successfully');
     } catch (err) {
       console.error('[Layout Error]', err);
     }
@@ -130,7 +140,7 @@ export default function App() {
       sigmaRef.current.kill();
     }
 
-    // Create new Sigma instance
+    // Create new Sigma instance with image rendering
     try {
       const sigma = new Sigma(graph, containerRef.current, {
         renderLabels: false,
@@ -192,21 +202,10 @@ export default function App() {
           </select>
 
           {graphData && (
-            <div className="stats">
-              <div className="stat-item">
-                <div className="stat-value">{graphData.metadata.nodeCount}</div>
-                <div className="stat-label">ユーザー</div>
-              </div>
-              <div className="stat-item">
-                <div className="stat-value">{graphData.metadata.edgeCount}</div>
-                <div className="stat-label">フォロー関係</div>
-              </div>
-              <div className="stat-item">
-                <div className="stat-value">
-                  {new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')}
-                </div>
-                <div className="stat-label">更新日</div>
-              </div>
+            <div className="stats-inline">
+              <div className="stat-group">ユーザー：<span className="stat-value-inline">{graphData.metadata.nodeCount}</span>人</div>
+              <div className="stat-group">フォローライン：<span className="stat-value-inline">{graphData.metadata.edgeCount}</span>本</div>
+              <div className="stat-group">更新日：<span className="stat-value-inline">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</span></div>
             </div>
           )}
         </div>
@@ -215,6 +214,10 @@ export default function App() {
 
       <div className="content">
         <div className="graph-container">
+          <div className="zoom-controls">
+            <button onClick={handleZoomIn} title="ズームイン" className="zoom-btn">+</button>
+            <button onClick={handleZoomOut} title="ズームアウト" className="zoom-btn">−</button>
+          </div>
           {loading ? (
             <div className="loading">グラフを読み込み中...</div>
           ) : (
@@ -227,7 +230,11 @@ export default function App() {
             <h3>ユーザー情報</h3>
             <div className="info-item">
               <div className="info-label">ハンドル</div>
-              <div className="info-value">{selectedNode.label}</div>
+              <div className="info-value">
+                <a href={`https://bsky.app/profile/${selectedNode.label}`} target="_blank" rel="noopener noreferrer" className="profile-link">
+                  {selectedNode.label}
+                </a>
+              </div>
             </div>
             <div className="info-item">
               <div className="info-label">表示名</div>

@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sigma/node-image": "^3.0.0",
     "graph-data-structure": "^4.3.0",
     "graphology": "^0.25.0",
     "graphology-layout": "^0.6.1",
