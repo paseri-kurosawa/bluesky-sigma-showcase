@@ -13,6 +13,7 @@ export default function App() {
   const [selectedHashtag, setSelectedHashtag] = useState(null);
   const [graphData, setGraphData] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
@@ -55,6 +56,55 @@ export default function App() {
     };
 
     fetchGraphData();
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim() || !graphData || !sigmaRef.current) return;
+
+    const query = searchQuery.toLowerCase();
+    const foundNode = graphData.nodes.find(
+      (node) =>
+        node.label.toLowerCase().includes(query) ||
+        (node.displayName && node.displayName.toLowerCase().includes(query))
+    );
+
+    if (foundNode) {
+      console.log('[Search] Found node:', foundNode.id);
+      const nodeAttrs = sigmaRef.current.getGraph().getNodeAttributes(foundNode.id);
+      console.log('[Search] Node attributes:', nodeAttrs);
+
+      const camera = sigmaRef.current.getCamera();
+      const bbox = sigmaRef.current.getBBox();
+
+      console.log('[Search] Graph BBox:', bbox);
+
+      // Convert graph coordinates to camera coordinates
+      const width = bbox.x[1] - bbox.x[0];
+      const height = bbox.y[1] - bbox.y[0];
+
+      const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+      const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+      console.log('[Search] Normalized coordinates:', { x: normalizedX, y: normalizedY });
+
+      // Animate to node position
+      camera.animate(
+        {
+          x: normalizedX,
+          y: normalizedY,
+          ratio: 0.01,
+        },
+        {
+          duration: 500,
+        }
+      );
+
+      setSelectedNode(nodeAttrs);
+      setError(null);
+    } else {
+      setError(`ユーザー「${searchQuery}」が見つかりません`);
+    }
   };
 
   // Fetch available hashtags
@@ -228,6 +278,17 @@ export default function App() {
             ))}
           </select>
 
+          <form onSubmit={handleSearch} className="search-form">
+            <input
+              type="text"
+              placeholder="ユーザー名またはハンドルで検索..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+            <button type="submit" className="search-btn">検索</button>
+          </form>
+
           {graphData && (
             <div className="stats-inline">
               <div className="stat-group">ユーザー：<span className="stat-value-inline">{graphData.metadata.nodeCount}</span>人</div>
@@ -249,7 +310,10 @@ export default function App() {
           {loading ? (
             <div className="loading">グラフを読み込み中...</div>
           ) : (
-            <div id="sigma-container" ref={containerRef} />
+            <>
+              <div id="sigma-container" ref={containerRef} />
+              <div className="crosshair" />
+            </>
           )}
         </div>
 
