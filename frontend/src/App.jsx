@@ -14,6 +14,12 @@ export default function App() {
   const [graphData, setGraphData] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [panelPos, setPanelPos] = useState(() => ({
+    x: 10,
+    y: window.innerHeight - 280
+  }));
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
@@ -57,6 +63,37 @@ export default function App() {
 
     fetchGraphData();
   };
+
+  const handlePanelMouseDown = (e) => {
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - panelPos.x,
+      y: e.clientY - panelPos.y,
+    });
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      setPanelPos({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, dragStart]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -259,17 +296,14 @@ export default function App() {
   return (
     <div className="app-container">
       <div className="header">
-        <h1>Bluesky User Network Graph</h1>
-        <p>
-          AT Protocol を使用したハッシュタグコミュニティのユーザーネットワーク可視化
-        </p>
-        <div className="controls">
-          <label htmlFor="hashtag-select">ハッシュタグを選択:</label>
+        <h1>
+          Bluesky User Network Graph
           <select
             id="hashtag-select"
             value={selectedHashtag || ''}
             onChange={(e) => setSelectedHashtag(e.target.value)}
             disabled={loading}
+            className="header-select"
           >
             {hashtags.map((tag) => (
               <option key={tag} value={tag}>
@@ -277,26 +311,24 @@ export default function App() {
               </option>
             ))}
           </select>
-
-          <form onSubmit={handleSearch} className="search-form">
-            <input
-              type="text"
-              placeholder="ユーザー名またはハンドルで検索..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="search-input"
-            />
-            <button type="submit" className="search-btn">検索</button>
-          </form>
-
           {graphData && (
             <div className="stats-inline">
               <div className="stat-group">ユーザー：<span className="stat-value-inline">{graphData.metadata.nodeCount}</span>人</div>
               <div className="stat-group">フォローライン：<span className="stat-value-inline">{graphData.metadata.edgeCount}</span>本</div>
-              <div className="stat-group">更新日：<span className="stat-value-inline">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</span></div>
+              <div className="stat-group">最終更新：<span className="stat-value-inline">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</span></div>
+              <form onSubmit={handleSearch} className="search-form">
+                <input
+                  type="text"
+                  placeholder="ユーザー名またはハンドルで検索..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
+                <button type="submit" className="search-btn">検索</button>
+              </form>
             </div>
           )}
-        </div>
+        </h1>
         {error && <div className="error">{error}</div>}
       </div>
 
@@ -318,38 +350,32 @@ export default function App() {
         </div>
 
         {selectedNode && (
-          <div className="sidebar">
-            <h3>ユーザー情報</h3>
-            <div className="info-item">
-              <div className="info-label">ハンドル</div>
-              <div className="info-value">
-                <a href={`https://bsky.app/profile/${selectedNode.label}`} target="_blank" rel="noopener noreferrer" className="profile-link">
-                  {selectedNode.label}
-                </a>
-              </div>
-            </div>
-            <div className="info-item">
-              <div className="info-label">表示名</div>
-              <div className="info-value">{selectedNode.displayName || 'N/A'}</div>
-            </div>
+          <div
+            className="user-panel"
+            style={{
+              left: `${panelPos.x}px`,
+              top: `${panelPos.y}px`,
+              cursor: isDragging ? 'grabbing' : 'grab'
+            }}
+            onMouseDown={handlePanelMouseDown}
+          >
             {selectedNode.avatar && (
               <div className="avatar-container">
-                <img src={selectedNode.avatar} alt={selectedNode.label} className="user-avatar" />
+                <img key={selectedNode.label} src={selectedNode.avatar} alt="" className="user-avatar" />
               </div>
             )}
-
-            <h3>フォロー統計</h3>
             <div className="info-item">
-              <div className="info-label">フォロワー</div>
-              <div className="info-value">{selectedNode.followersCount || 0}</div>
+              <div className="info-value display-name">{selectedNode.displayName || 'N/A'}</div>
             </div>
             <div className="info-item">
-              <div className="info-label">フォロー中</div>
-              <div className="info-value">{selectedNode.followsCount || 0}</div>
+              <a href={`https://bsky.app/profile/${selectedNode.label}`} target="_blank" rel="noopener noreferrer" className="profile-link">
+                {selectedNode.label}
+              </a>
             </div>
-            <div className="info-item">
-              <div className="info-label">投稿数</div>
-              <div className="info-value">{selectedNode.postsCount || 0}</div>
+            <div className="stats-row">
+              <span>フォロー: <strong>{selectedNode.followsCount || 0}</strong></span>
+              <span>フォロワー: <strong>{selectedNode.followersCount || 0}</strong></span>
+              <span>投稿数: <strong>{selectedNode.postsCount || 0}</strong></span>
             </div>
           </div>
         )}
