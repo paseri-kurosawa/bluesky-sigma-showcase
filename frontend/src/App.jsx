@@ -30,6 +30,33 @@ export default function App() {
     }
   };
 
+  const handleReloadGraph = () => {
+    setLoading(true);
+    setError(null);
+    setGraphData(null);
+    setSelectedNode(null);
+
+    const fetchGraphData = async () => {
+      try {
+        const url = selectedHashtag
+          ? `${apiEndpoint}/api/graph/${encodeURIComponent(selectedHashtag)}/latest`
+          : `${apiEndpoint}/api/graph/latest`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch graph data');
+        const data = await response.json();
+        setGraphData(data);
+      } catch (err) {
+        console.error('Error fetching graph:', err);
+        setError(`Failed to reload graph for #${selectedHashtag}`);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchGraphData();
+  };
+
   // Fetch available hashtags
   useEffect(() => {
     const fetchHashtags = async () => {
@@ -97,7 +124,7 @@ export default function App() {
         postsCount: node.postsCount,
         avatar: node.avatar,
         size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
-        color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+        color: '#f5d963',
         x: Math.random(),
         y: Math.random(),
       });
@@ -111,7 +138,7 @@ export default function App() {
         const isMutual = edge.mutual || false;
         graph.addEdge(edge.source, edge.target, {
           mutual: isMutual,
-          color: isMutual ? '#1da1f2' : '#ccc',
+          color: isMutual ? '#b0b0b0' : '#505050',
         });
         edgeCount++;
         if (isMutual) mutualCount++;
@@ -145,8 +172,7 @@ export default function App() {
       const sigma = new Sigma(graph, containerRef.current, {
         renderLabels: false,
         renderEdgeLabels: false,
-        defaultNodeColor: '#1da1f2',
-        defaultEdgeColor: '#e1e8ed',
+        defaultEdgeColor: '#808080',
         labelDensity: 0.1,
         labelRenderedSizeThreshold: 8,
         minCameraRatio: 0.1,
@@ -154,6 +180,7 @@ export default function App() {
       });
 
       sigmaRef.current = sigma;
+      window.sigmaInstance = sigma;
 
       // Fit camera to graph
       sigma.getCamera().animatedZoom();
@@ -217,6 +244,7 @@ export default function App() {
           <div className="zoom-controls">
             <button onClick={handleZoomIn} title="ズームイン" className="zoom-btn">+</button>
             <button onClick={handleZoomOut} title="ズームアウト" className="zoom-btn">−</button>
+            <button onClick={handleReloadGraph} title="グラフをリロード" className="zoom-btn">↻</button>
           </div>
           {loading ? (
             <div className="loading">グラフを読み込み中...</div>
