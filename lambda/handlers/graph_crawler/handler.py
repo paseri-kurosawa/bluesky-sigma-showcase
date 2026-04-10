@@ -143,29 +143,40 @@ def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
 
 
 # === Step 3: Build graph edges (follow relationships) ===
-def build_graph_edges(client: Client, dids: List[str], profiles: Dict[str, Dict]) -> List[Dict]:
+def build_graph_edges(client: Client, new_dids: List[str], merged_profiles: Dict[str, Dict], existing_dids: List[str]) -> List[Dict]:
     """
-    Build graph edges by fetching follow relationships between users.
+    Build comprehensive graph edges by fetching follow relationships.
+
+    3 phases of edge computation:
+    1. New users → new users (within new_dids)
+    2. New users → existing users
+    3. Existing users → new users
 
     Args:
         client: AT Protocol client
-        dids: List of user DIDs in community
-        profiles: Dict of user profiles
+        new_dids: List of newly fetched user DIDs
+        merged_profiles: Dict of all user profiles (new + existing)
+        existing_dids: List of existing user DIDs from previous data
 
     Returns:
         List of edge dicts: [{"source": did1, "target": did2, "type": "follows"}]
     """
-    print(f"[GRAPH] Building follow relationships...")
+    print(f"[GRAPH] Building comprehensive follow relationships...")
 
     edges = []
-    dids_set = set(dids)  # For fast lookup
+    new_dids_set = set(new_dids)
+    existing_dids_set = set(existing_dids)
+    all_dids_set = new_dids_set | existing_dids_set
 
-    for i, did in enumerate(dids):
+    from atproto_client.models.app.bsky.graph.get_follows import Params as GetFollowsParams
+
+    # Phase 1 & 2: Process new users
+    # Edges: new → new AND new → existing
+    print(f"[GRAPH] Phase 1-2: Processing {len(new_dids)} new users...")
+    new_edges = 0
+
+    for i, did in enumerate(new_dids):
         try:
-            # Import Params for get_follows
-            from atproto_client.models.app.bsky.graph.get_follows import Params as GetFollowsParams
-
-            # Get who this user follows (within community)
             follows_params = GetFollowsParams(actor=did, limit=100)
             follows = rate_limited_call(
                 client.app.bsky.graph.get_follows,
@@ -174,21 +185,72 @@ def build_graph_edges(client: Client, dids: List[str], profiles: Dict[str, Dict]
 
             if follows and follows.follows:
                 for follow in follows.follows:
-                    if follow.did in dids_set:
+                    if follow.did in all_dids_set:  # Check against ALL users (new + existing)
                         edges.append({
                             "source": did,
                             "target": follow.did,
                             "type": "follows"
                         })
+                        new_edges += 1
 
             if (i + 1) % 10 == 0:
-                print(f"  [PROGRESS] {i + 1}/{len(dids)} users processed, {len(edges)} edges found")
+                print(f"  [PROGRESS] {i + 1}/{len(new_dids)} new users processed, {new_edges} edges")
 
         except Exception as e:
-            print(f"[GRAPH ERROR] Failed to get follows for {did}: {str(e)}")
+            print(f"[GRAPH ERROR] Failed to get follows for new user {did}: {str(e)}")
             continue
 
-    print(f"[GRAPH] Built {len(edges)} edges")
+    print(f"[GRAPH] Phase 1-2: Found {new_edges} edges from new users")
+
+    # Phase 3: Process existing users
+    # Edges: existing → new
+    print(f"[GRAPH] Phase 3: Processing {len(existing_dids)} existing users...")
+    existing_edges = 0
+
+    for i, did in enumerate(existing_dids):
+        try:
+            follows_params = GetFollowsParams(actor=did, limit=100)
+            follows = rate_limited_call(
+                client.app.bsky.graph.get_follows,
+                follows_params
+            )
+
+            if follows and follows.follows:
+                for follow in follows.follows:
+                    if follow.did in new_dids_set:  # Only check against new users
+                        edges.append({
+                            "source": did,
+                            "target": follow.did,
+                            "type": "follows"
+                        })
+                        existing_edges += 1
+
+            if (i + 1) % 10 == 0:
+                print(f"  [PROGRESS] {i + 1}/{len(existing_dids)} existing users processed, {existing_edges} edges")
+
+        except Exception as e:
+            print(f"[GRAPH ERROR] Failed to get follows for existing user {did}: {str(e)}")
+            continue
+
+    print(f"[GRAPH] Phase 3: Found {existing_edges} edges from existing users")
+    print(f"[GRAPH] Total edges built: {len(edges)} ({new_edges} from new, {existing_edges} from existing)")
+
+    # Mark mutual follows
+    print(f"[GRAPH] Marking mutual follows...")
+    edge_pairs = set()
+    for edge in edges:
+        edge_pairs.add((edge['source'], edge['target']))
+
+    mutual_count = 0
+    for edge in edges:
+        reverse_pair = (edge['target'], edge['source'])
+        if reverse_pair in edge_pairs:
+            edge['mutual'] = True
+            mutual_count += 1
+        else:
+            edge['mutual'] = False
+
+    print(f"[GRAPH] Found {mutual_count} mutual follows, {len(edges) - mutual_count} unilateral follows")
     return edges
 
 
@@ -285,18 +347,23 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
 
     merged_nodes = list(previous_nodes_dict.values())
 
-    # Merge edges: de-duplicate by (source, target) pair
+    # Merge edges: de-duplicate by (source, target) pair, preserve mutual flag
     previous_edges = previous_data.get('edges', [])
     new_edges = new_graph.get('edges', [])
 
-    edge_set = set()
-    merged_edges_list = []
+    edge_dict = {}  # Use dict to deduplicate by (source, target)
 
     for edge in previous_edges + new_edges:
-        edge_key = (edge['source'], edge['target'], edge.get('type', 'follows'))
-        if edge_key not in edge_set:
-            edge_set.add(edge_key)
-            merged_edges_list.append(edge)
+        edge_key = (edge['source'], edge['target'])
+        # If edge already exists, update with new data (which may have updated mutual flag)
+        if edge_key not in edge_dict:
+            edge_dict[edge_key] = edge
+        else:
+            # Preserve mutual flag from new data if available
+            if 'mutual' in edge:
+                edge_dict[edge_key]['mutual'] = edge['mutual']
+
+    merged_edges_list = list(edge_dict.values())
 
     merged_graph = {
         "nodes": merged_nodes,
@@ -382,25 +449,46 @@ def lambda_handler(event, context):
         for hashtag in TARGET_HASHTAGS:
             print(f"\n[HANDLER] Processing hashtag: #{hashtag}")
 
-            # Step 1: Search for posts and extract DIDs
-            dids = search_hashtag_posts(client, hashtag, limit=USERS_PER_HASHTAG)
+            # Step 1: Search for posts and extract DIDs (new users)
+            new_dids = search_hashtag_posts(client, hashtag, limit=USERS_PER_HASHTAG)
 
-            if not dids:
+            if not new_dids:
                 print(f"[HANDLER] No DIDs found for #{hashtag}, skipping")
                 continue
 
-            # Step 2: Fetch user profiles
-            profiles = fetch_user_profiles(client, dids)
+            # Step 2: Fetch user profiles (new users)
+            new_profiles = fetch_user_profiles(client, new_dids)
 
-            if not profiles:
+            if not new_profiles:
                 print(f"[HANDLER] No profiles fetched for #{hashtag}, skipping")
                 continue
 
-            # Step 3: Build graph edges
-            edges = build_graph_edges(client, dids, profiles)
+            # Step 2.5: Load existing data to build comprehensive edges
+            safe_hashtag = hashtag.replace("#", "").replace("/", "_")
+            s3_key_merged = f"{S3_PREFIX}{safe_hashtag}/users_merged.json"
+            existing_data = None
+            existing_dids = []
+            existing_profiles = {}
 
-            # Step 4: Generate graph JSON
-            graph_json = generate_graph_json(hashtag, profiles, edges)
+            try:
+                response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key_merged)
+                existing_data = json.loads(response['Body'].read().decode('utf-8'))
+                existing_dids = [node['id'] for node in existing_data.get('nodes', [])]
+                existing_profiles = {node['id']: node for node in existing_data.get('nodes', [])}
+                print(f"[HANDLER] Loaded {len(existing_dids)} existing users")
+            except s3_client.exceptions.NoSuchKey:
+                print(f"[HANDLER] No existing data found (first run)")
+            except Exception as e:
+                print(f"[HANDLER] Warning: Could not load existing data: {str(e)}")
+
+            # Merge profiles: new + existing
+            merged_profiles = {**existing_profiles, **new_profiles}
+
+            # Step 3: Build graph edges (3 phases: new→new, new→existing, existing→new)
+            edges = build_graph_edges(client, new_dids, merged_profiles, existing_dids)
+
+            # Step 4: Generate graph JSON (new users only)
+            graph_json = generate_graph_json(hashtag, new_profiles, edges)
 
             # Step 4.5: Merge with previous data
             merged_graph = merge_with_previous_graph(graph_json, hashtag)

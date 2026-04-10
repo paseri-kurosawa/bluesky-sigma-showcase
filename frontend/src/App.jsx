@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Sigma from 'sigma';
 import Graph from 'graphology';
+import { random } from 'graphology-layout';
+import forceAtlas2 from 'graphology-layout-forceatlas2';
 
 export default function App() {
   const containerRef = useRef(null);
@@ -72,7 +74,7 @@ export default function App() {
     // Create graph
     const graph = new Graph();
 
-    // Add nodes with random coordinates
+    // Add nodes with placeholder coordinates
     graphData.nodes.forEach((node, index) => {
       graph.addNode(node.id, {
         label: node.label,
@@ -83,19 +85,45 @@ export default function App() {
         avatar: node.avatar,
         size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
         color: `hsl(${Math.random() * 360}, 70%, 60%)`,
-        x: Math.random() * 1000,
-        y: Math.random() * 1000,
+        x: Math.random(),
+        y: Math.random(),
       });
     });
 
-    // Add edges
+    // Add edges with mutual flag and styling
+    let edgeCount = 0;
+    let mutualCount = 0;
     graphData.edges.forEach((edge) => {
       try {
-        graph.addEdge(edge.source, edge.target);
+        const isMutual = edge.mutual || false;
+        graph.addEdge(edge.source, edge.target, {
+          mutual: isMutual,
+          color: isMutual ? '#1da1f2' : '#ccc',
+        });
+        edgeCount++;
+        if (isMutual) mutualCount++;
       } catch (err) {
-        // Edge might reference non-existent node, skip
+        console.warn('[Edge Error]', edge, err.message);
       }
     });
+    console.log(`[Graph] Nodes: ${graph.order}, Edges: ${edgeCount} (Mutual: ${mutualCount}, Unilateral: ${edgeCount - mutualCount})`);
+
+    // Apply layouts: random first, then ForceAtlas2
+    try {
+      // Step 1: Initialize with random layout
+      random.assign(graph);
+      console.log('[Layout] Random initialization applied');
+
+      // Step 2: Apply ForceAtlas2 force-directed layout
+      const settings = forceAtlas2.inferSettings(graph);
+      forceAtlas2.assign(graph, {
+        iterations: 150,
+        settings: settings,
+      });
+      console.log('[Layout] ForceAtlas2 applied successfully');
+    } catch (err) {
+      console.error('[Layout Error]', err);
+    }
 
     // Dispose old Sigma instance
     if (sigmaRef.current) {
@@ -116,6 +144,9 @@ export default function App() {
       });
 
       sigmaRef.current = sigma;
+
+      // Fit camera to graph
+      sigma.getCamera().animatedZoom();
 
       // Node click handler
       sigma.on('clickNode', ({ node }) => {
@@ -145,7 +176,6 @@ export default function App() {
         <p>
           AT Protocol を使用したハッシュタグコミュニティのユーザーネットワーク可視化
         </p>
-        {error && <div className="error">{error}</div>}
         <div className="controls">
           <label htmlFor="hashtag-select">ハッシュタグを選択:</label>
           <select
@@ -160,26 +190,27 @@ export default function App() {
               </option>
             ))}
           </select>
-        </div>
 
-        {graphData && (
-          <div className="stats">
-            <div className="stat-item">
-              <div className="stat-value">{graphData.metadata.nodeCount}</div>
-              <div className="stat-label">ユーザー</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-value">{graphData.metadata.edgeCount}</div>
-              <div className="stat-label">フォロー関係</div>
-            </div>
-            <div className="stat-item">
-              <div className="stat-value">
-                {new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')}
+          {graphData && (
+            <div className="stats">
+              <div className="stat-item">
+                <div className="stat-value">{graphData.metadata.nodeCount}</div>
+                <div className="stat-label">ユーザー</div>
               </div>
-              <div className="stat-label">更新日</div>
+              <div className="stat-item">
+                <div className="stat-value">{graphData.metadata.edgeCount}</div>
+                <div className="stat-label">フォロー関係</div>
+              </div>
+              <div className="stat-item">
+                <div className="stat-value">
+                  {new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')}
+                </div>
+                <div className="stat-label">更新日</div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        {error && <div className="error">{error}</div>}
       </div>
 
       <div className="content">
