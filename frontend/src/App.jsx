@@ -20,6 +20,7 @@ export default function App() {
   }));
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [showInfo, setShowInfo] = useState(false);
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
@@ -204,7 +205,7 @@ export default function App() {
     // Add nodes
     graphData.nodes.forEach((node) => {
       graph.addNode(node.id, {
-        label: node.label,
+        label: node.displayName,
         displayName: node.displayName,
         followersCount: node.followersCount,
         followsCount: node.followsCount,
@@ -274,12 +275,57 @@ export default function App() {
 
       // Node click handler
       sigma.on('clickNode', ({ node }) => {
+        // Reset all nodes and edges to original colors first
+        graph.forEachNode(n => {
+          graph.setNodeAttribute(n, 'color', '#f5d963');
+        });
+        graph.forEachEdge(e => {
+          const edgeData = graph.getEdgeAttributes(e);
+          graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+        });
+
+        // Now apply highlight for selected node
         setSelectedNode(graph.getNodeAttributes(node));
+
+        const neighbors = graph.neighbors(node);
+        const selectedNodeSet = new Set([node, ...neighbors]);
+
+        // Grayscale unrelated nodes only
+        graph.forEachNode(n => {
+          if (!selectedNodeSet.has(n)) {
+            graph.setNodeAttribute(n, 'color', '#aaa');
+          }
+        });
+
+        // Collect connected edges
+        const connectedEdges = new Set();
+        graph.forEachOutboundEdge(node, e => {
+          connectedEdges.add(e);
+        });
+        graph.forEachInboundEdge(node, e => {
+          connectedEdges.add(e);
+        });
+
+        // Make unrelated edges very dark (nearly black)
+        graph.forEachEdge(e => {
+          if (!connectedEdges.has(e)) {
+            graph.setEdgeAttribute(e, 'color', '#222222');
+          }
+        });
       });
 
       // Background click handler
       sigma.on('clickStage', () => {
         setSelectedNode(null);
+
+        // Reset all nodes and edges to original colors
+        graph.forEachNode(n => {
+          graph.setNodeAttribute(n, 'color', '#f5d963');
+        });
+        graph.forEachEdge(e => {
+          const edgeData = graph.getEdgeAttributes(e);
+          graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+        });
       });
     } catch (err) {
       console.error('Error initializing Sigma:', err);
@@ -298,6 +344,13 @@ export default function App() {
       <div className="header">
         <h1>
           Bluesky User Network Graph
+          <button
+            onClick={() => setShowInfo(!showInfo)}
+            className="info-btn"
+            title="サービスの説明"
+          >
+            ？
+          </button>
           <select
             id="hashtag-select"
             value={selectedHashtag || ''}
@@ -315,7 +368,7 @@ export default function App() {
             <>
               <div className="stats-inline">
                 <div className="stat-group">ユーザー：<span className="stat-value-inline">{graphData.metadata.nodeCount}</span>人</div>
-                <div className="stat-group">フォローライン：<span className="stat-value-inline">{graphData.metadata.edgeCount}</span>本</div>
+                <div className="stat-group">エッジ：<span className="stat-value-inline">{graphData.metadata.edgeCount}</span>本</div>
                 <div className="stat-group">最終更新：<span className="stat-value-inline">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</span></div>
               </div>
               <form onSubmit={handleSearch} className="search-form">
@@ -350,6 +403,39 @@ export default function App() {
             </>
           )}
         </div>
+
+        {showInfo && (
+          <>
+            <div className="modal-overlay" onClick={() => setShowInfo(false)} />
+            <div className="info-modal">
+              <div className="info-modal-header">
+                <h2>Bluesky User Network Graph について</h2>
+                <button
+                  onClick={() => setShowInfo(false)}
+                  className="close-btn"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="info-modal-content">
+                <p><strong>このサイトは何？</strong></p>
+                <p><a href="https://bsky.app/" target="_blank" rel="noopener noreferrer">Bluesky</a>の日本語圏ユーザーネットワークを可視化するツールです。選択したハッシュタグに関連するユーザーをグラフとして表示します。</p>
+
+                <p><strong>グラフについて</strong></p>
+                <p>• 各ノード（円）がユーザーを表します</p>
+                <p>• ノードのサイズはフォロワー数に比例します</p>
+                <p>• エッジ（線）がフォロー関係を表します</p>
+                <p>• 濃い灰色の線は相互フォロー、薄い灰色は片方向フォローです</p>
+
+                <p><strong>機能</strong></p>
+                <p>• ハッシュタグを選択してグラフを切り替え</p>
+                <p>• 検索ボックスでユーザーを検索</p>
+                <p>• ズームコントロールで拡大・縮小</p>
+                <p>• ノードをクリックするとユーザー情報を表示</p>
+              </div>
+            </div>
+          </>
+        )}
 
         {selectedNode && (
           <div
