@@ -162,9 +162,17 @@ export default function App() {
         const response = await fetch(`${apiEndpoint}/api/hashtags`);
         if (!response.ok) throw new Error('Failed to fetch hashtags');
         const data = await response.json();
-        setHashtags(data.hashtags || []);
-        if (data.hashtags && data.hashtags.length > 0) {
-          setSelectedHashtag(data.hashtags[0]);
+        let tags = data.hashtags || [];
+
+        // Move "統合" to the end if it exists
+        tags = tags.filter(tag => tag !== '統合');
+        if (data.hashtags?.includes('統合')) {
+          tags.push('統合');
+        }
+
+        setHashtags(tags);
+        if (tags.length > 0) {
+          setSelectedHashtag(tags[0]);
         }
       } catch (err) {
         console.error('Error fetching hashtags:', err);
@@ -400,7 +408,7 @@ export default function App() {
           >
             {hashtags.map((tag) => (
               <option key={tag} value={tag}>
-                #{tag}
+                {tag === '統合' ? tag : `#${tag}`}
               </option>
             ))}
           </select>

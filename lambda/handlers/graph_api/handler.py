@@ -16,7 +16,7 @@ S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase-878311109818')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'sigma-graph/')
 
 # Allowed hashtags (whitelist)
-ALLOWED_HASHTAGS = ["おはようvtuber", "青空ごはん部", "イラスト"]
+ALLOWED_HASHTAGS = ["おはようvtuber", "青空ごはん部", "イラスト", "統合"]
 
 
 # === Helper Functions ===
@@ -128,7 +128,11 @@ def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
                 })
 
         # Fetch accumulated merged graph (蓄積されたユーザー情報を使用)
-        s3_key = f"{S3_PREFIX}{hashtag}/users_merged.json"
+        # Special case: unified graph is stored at /統合/graph.json instead of /統合/users_merged.json
+        if hashtag == "統合":
+            s3_key = f"{S3_PREFIX}{hashtag}/graph.json"
+        else:
+            s3_key = f"{S3_PREFIX}{hashtag}/users_merged.json"
         graph = get_graph_from_s3(s3_key)
 
         if not graph:
