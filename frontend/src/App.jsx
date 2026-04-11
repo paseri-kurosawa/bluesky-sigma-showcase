@@ -207,6 +207,7 @@ export default function App() {
       graph.addNode(node.id, {
         label: node.displayName,
         displayName: node.displayName,
+        accountId: node.label,
         followersCount: node.followersCount,
         followsCount: node.followsCount,
         postsCount: node.postsCount,
@@ -456,8 +457,8 @@ export default function App() {
               <div className="info-value display-name">{selectedNode.displayName || 'N/A'}</div>
             </div>
             <div className="info-item">
-              <a href={`https://bsky.app/profile/${selectedNode.label}`} target="_blank" rel="noopener noreferrer" className="profile-link">
-                {selectedNode.label}
+              <a href={`https://bsky.app/profile/${selectedNode.accountId}`} target="_blank" rel="noopener noreferrer" className="profile-link">
+                {selectedNode.accountId}
               </a>
             </div>
             <div className="stats-row">
