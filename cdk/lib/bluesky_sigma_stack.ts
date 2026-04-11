@@ -103,9 +103,13 @@ export class BlueskySigmaStack extends cdk.Stack {
       restApiName: 'bluesky-sigma-graph-api',
       description: 'API for fetching graph data',
       defaultCorsPreflightOptions: {
-        allowOrigins: apigateway.Cors.ALL_ORIGINS,
-        allowMethods: apigateway.Cors.ALL_METHODS,
-        allowHeaders: ['Content-Type', 'Authorization'],
+        allowOrigins: [
+          'https://d1g3djqpjf3j38.cloudfront.net',  // Production CloudFront domain
+          'http://localhost:3000',                   // Development
+          'http://localhost:5173',                   // Vite dev server
+        ],
+        allowMethods: ['GET', 'OPTIONS'],
+        allowHeaders: ['Content-Type'],
       },
     });
 

@@ -1,6 +1,7 @@
 import os
 import json
 import boto3
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
@@ -13,6 +14,9 @@ JST = timezone(timedelta(hours=9))
 # === Configuration ===
 S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase-878311109818')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'sigma-graph/')
+
+# Allowed hashtags (whitelist)
+ALLOWED_HASHTAGS = ["おはようvtuber", "青空ごはん部", "イラスト"]
 
 
 # === Helper Functions ===
@@ -115,6 +119,13 @@ def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
             # URL decode if necessary
             import urllib.parse
             hashtag = urllib.parse.unquote(hashtag)
+
+            # Validate hashtag (whitelist)
+            if hashtag not in ALLOWED_HASHTAGS:
+                return build_response(404, {
+                    "error": "Hashtag not found",
+                    "hashtag": hashtag
+                })
 
         # Fetch accumulated merged graph (蓄積されたユーザー情報を使用)
         s3_key = f"{S3_PREFIX}{hashtag}/users_merged.json"
