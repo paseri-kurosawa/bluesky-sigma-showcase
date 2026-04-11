@@ -71,7 +71,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       handler: 'handler.lambda_handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/handlers/graph_crawler')),
       role: lambdaExecutionRole,
-      timeout: cdk.Duration.minutes(10),
+      timeout: cdk.Duration.minutes(15),
       memorySize: 1024,
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,

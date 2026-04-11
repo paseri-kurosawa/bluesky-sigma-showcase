@@ -145,12 +145,13 @@ def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
 # === Step 3: Build graph edges (follow relationships) ===
 def build_graph_edges(client: Client, new_dids: List[str], merged_profiles: Dict[str, Dict], existing_dids: List[str]) -> List[Dict]:
     """
-    Build comprehensive graph edges by fetching follow relationships.
+    Build graph edges from new users only (cumulative graph, not full recomputation).
 
-    3 phases of edge computation:
-    1. New users → new users (within new_dids)
-    2. New users → existing users
-    3. Existing users → new users
+    Edge computation:
+    - New users → new users (within new_dids)
+    - New users → existing users
+
+    Existing users' follow relationships are not updated (assumed unchanged from previous batch).
 
     Args:
         client: AT Protocol client
@@ -201,39 +202,7 @@ def build_graph_edges(client: Client, new_dids: List[str], merged_profiles: Dict
             continue
 
     print(f"[GRAPH] Phase 1-2: Found {new_edges} edges from new users")
-
-    # Phase 3: Process existing users
-    # Edges: existing → new
-    print(f"[GRAPH] Phase 3: Processing {len(existing_dids)} existing users...")
-    existing_edges = 0
-
-    for i, did in enumerate(existing_dids):
-        try:
-            follows_params = GetFollowsParams(actor=did, limit=100)
-            follows = rate_limited_call(
-                client.app.bsky.graph.get_follows,
-                follows_params
-            )
-
-            if follows and follows.follows:
-                for follow in follows.follows:
-                    if follow.did in new_dids_set:  # Only check against new users
-                        edges.append({
-                            "source": did,
-                            "target": follow.did,
-                            "type": "follows"
-                        })
-                        existing_edges += 1
-
-            if (i + 1) % 10 == 0:
-                print(f"  [PROGRESS] {i + 1}/{len(existing_dids)} existing users processed, {existing_edges} edges")
-
-        except Exception as e:
-            print(f"[GRAPH ERROR] Failed to get follows for existing user {did}: {str(e)}")
-            continue
-
-    print(f"[GRAPH] Phase 3: Found {existing_edges} edges from existing users")
-    print(f"[GRAPH] Total edges built: {len(edges)} ({new_edges} from new, {existing_edges} from existing)")
+    print(f"[GRAPH] Total edges built: {len(edges)}")
 
     # Mark mutual follows
     print(f"[GRAPH] Marking mutual follows...")
