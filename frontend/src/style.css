@@ -437,9 +437,9 @@ body {
 
 .info-modal {
   position: fixed;
-  top: 50%;
+  top: 0;
   left: 50%;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   background: white;
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
@@ -491,7 +491,7 @@ body {
 }
 
 .info-modal-content p {
-  margin: 0.5rem 0;
+  margin: 0.25rem 0;
 }
 
 .info-modal-content strong {

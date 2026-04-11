@@ -7,6 +7,7 @@ import forceAtlas2 from 'graphology-layout-forceatlas2';
 export default function App() {
   const containerRef = useRef(null);
   const sigmaRef = useRef(null);
+  const headerRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hashtags, setHashtags] = useState([]);
@@ -21,6 +22,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showInfo, setShowInfo] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(0);
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
@@ -144,6 +146,20 @@ export default function App() {
       setError(`ユーザー「${searchQuery}」が見つかりません`);
     }
   };
+
+  // Calculate header height with ResizeObserver
+  useEffect(() => {
+    if (!headerRef.current) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (headerRef.current) {
+        setHeaderHeight(headerRef.current.offsetHeight + 10);
+      }
+    });
+
+    resizeObserver.observe(headerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // Fetch available hashtags
   useEffect(() => {
@@ -371,7 +387,7 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <div className="header">
+      <div className="header" ref={headerRef}>
         <h1>
           Bluesky User Network Graph
           <button
@@ -437,7 +453,7 @@ export default function App() {
         {showInfo && (
           <>
             <div className="modal-overlay" onClick={() => setShowInfo(false)} />
-            <div className="info-modal">
+            <div className="info-modal" style={{ top: `${headerHeight}px` }}>
               <div className="info-modal-header">
                 <h2>Bluesky User Network Graph について</h2>
                 <button
@@ -449,7 +465,7 @@ export default function App() {
               </div>
               <div className="info-modal-content">
                 <p><strong>このサイトは何？</strong></p>
-                <p><a href="https://bsky.app/" target="_blank" rel="noopener noreferrer">Bluesky</a>の日本語圏ユーザーネットワークを可視化するツールです。選択したハッシュタグに関連するユーザーをグラフとして表示します。</p>
+                <p><a href="https://bsky.app/" target="_blank" rel="noopener noreferrer">Bluesky</a>の日本語圏ユーザーネットワークを可視化するツールです。<br />選択したハッシュタグに関連するユーザーをグラフとして表示します。<br />反映されている情報は必ずしも最新ではありません。</p>
 
                 <p><strong>グラフについて</strong></p>
                 <p>• 各ノード（円）がユーザーを表します</p>
@@ -463,6 +479,9 @@ export default function App() {
                 <p>• 検索ボックスでユーザーを検索</p>
                 <p>• ズームコントロールで拡大・縮小</p>
                 <p>• ノードをクリックするとユーザー情報を表示</p>
+
+                <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid #ccc' }} />
+                <p style={{ fontSize: '0.9em', color: '#666' }}>created by <a href="https://bsky.app/profile/paseri-kurosawa.bsky.social" target="_blank" rel="noopener noreferrer">@paseri-kurosawa.bsky.social</a></p>
               </div>
             </div>
           </>
