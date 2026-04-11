@@ -110,14 +110,10 @@ export default function App() {
     );
 
     if (foundNode) {
-      console.log('[Search] Found node:', foundNode.id);
       const nodeAttrs = sigmaRef.current.getGraph().getNodeAttributes(foundNode.id);
-      console.log('[Search] Node attributes:', nodeAttrs);
 
       const camera = sigmaRef.current.getCamera();
       const bbox = sigmaRef.current.getBBox();
-
-      console.log('[Search] Graph BBox:', bbox);
 
       // Convert graph coordinates to camera coordinates
       const width = bbox.x[1] - bbox.x[0];
@@ -125,8 +121,6 @@ export default function App() {
 
       const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
       const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
-
-      console.log('[Search] Normalized coordinates:', { x: normalizedX, y: normalizedY });
 
       // Animate to node position
       camera.animate(
