@@ -204,6 +204,20 @@ export default function App() {
 
     // Add nodes
     graphData.nodes.forEach((node) => {
+      // Determine node color based on last post time
+      let nodeColor = '#f5d963'; // Default yellow
+      if (node.lastPostAt) {
+        const lastPostTime = new Date(node.lastPostAt);
+        const now = new Date();
+        const diffMs = now - lastPostTime;
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        // Orange-red if posted within last 2 hours
+        if (diffHours <= 2) {
+          nodeColor = '#ff6b4a';
+        }
+      }
+
       graph.addNode(node.id, {
         label: node.displayName,
         displayName: node.displayName,
@@ -212,8 +226,9 @@ export default function App() {
         followsCount: node.followsCount,
         postsCount: node.postsCount,
         avatar: node.avatar,
+        lastPostAt: node.lastPostAt,
         size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
-        color: '#f5d963',
+        color: nodeColor,
         x: Math.random(),
         y: Math.random(),
       });
@@ -321,7 +336,21 @@ export default function App() {
 
         // Reset all nodes and edges to original colors
         graph.forEachNode(n => {
-          graph.setNodeAttribute(n, 'color', '#f5d963');
+          const nodeAttrs = graph.getNodeAttributes(n);
+          // Determine color based on last post time
+          let nodeColor = '#f5d963'; // Default yellow
+          if (nodeAttrs.lastPostAt) {
+            const lastPostTime = new Date(nodeAttrs.lastPostAt);
+            const now = new Date();
+            const diffMs = now - lastPostTime;
+            const diffHours = diffMs / (1000 * 60 * 60);
+
+            // Orange-red if posted within last 2 hours
+            if (diffHours <= 2) {
+              nodeColor = '#ff6b4a';
+            }
+          }
+          graph.setNodeAttribute(n, 'color', nodeColor);
         });
         graph.forEachEdge(e => {
           const edgeData = graph.getEdgeAttributes(e);

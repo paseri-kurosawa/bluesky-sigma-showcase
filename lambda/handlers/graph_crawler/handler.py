@@ -46,9 +46,9 @@ def rate_limited_call(func, *args, **kwargs):
 
 
 # === Step 1: Search for hashtag posts and extract DIDs ===
-def search_hashtag_posts(client: Client, hashtag: str, limit: int = 100) -> List[str]:
+def search_hashtag_posts(client: Client, hashtag: str, limit: int = 100) -> Tuple[List[str], Dict[str, str]]:
     """
-    Search for posts with specific hashtag and extract author DIDs.
+    Search for posts with specific hashtag and extract author DIDs and their latest post times.
 
     Args:
         client: AT Protocol client
@@ -56,11 +56,12 @@ def search_hashtag_posts(client: Client, hashtag: str, limit: int = 100) -> List
         limit: Number of posts to retrieve
 
     Returns:
-        List of unique DIDs
+        Tuple of (List of unique DIDs, Dict mapping DID -> latest post indexed_at)
     """
     print(f"[SEARCH] Searching for #{hashtag} posts...")
 
     dids = set()
+    last_post_times = {}
     try:
         # Search query: lang:ja #<hashtag>
         search_query = f"lang:ja #{hashtag}"
@@ -81,32 +82,41 @@ def search_hashtag_posts(client: Client, hashtag: str, limit: int = 100) -> List
         if posts and posts.posts:
             for post in posts.posts:
                 if hasattr(post, 'author') and hasattr(post.author, 'did'):
-                    dids.add(post.author.did)
-                    print(f"  [FOUND] {post.author.handle} ({post.author.did})")
+                    did = post.author.did
+                    dids.add(did)
+                    # Record the latest post time (posts are in newest-first order)
+                    if did not in last_post_times:
+                        indexed_at = getattr(post, 'indexed_at', '')
+                        last_post_times[did] = indexed_at
+                    print(f"  [FOUND] {post.author.handle} ({did}) - last post: {last_post_times.get(did, 'N/A')}")
 
         print(f"[SEARCH] Found {len(dids)} unique DIDs for #{hashtag}")
-        return list(dids)
+        return list(dids), last_post_times
 
     except Exception as e:
         print(f"[SEARCH ERROR] Failed to search hashtag: {str(e)}")
         import traceback
         traceback.print_exc()
-        return []
+        return [], {}
 
 
 # === Step 2: Fetch user profiles ===
-def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
+def fetch_user_profiles(client: Client, dids: List[str], last_post_times: Dict[str, str] = None) -> Dict[str, Dict]:
     """
     Fetch detailed user profile information for each DID.
 
     Args:
         client: AT Protocol client
         dids: List of user DIDs
+        last_post_times: Optional dict mapping DID -> indexed_at of latest post
 
     Returns:
         Dict mapping DID -> profile data
     """
     print(f"[PROFILES] Fetching profiles for {len(dids)} users...")
+
+    if last_post_times is None:
+        last_post_times = {}
 
     profiles = {}
     for i, did in enumerate(dids):
@@ -119,6 +129,18 @@ def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
             profile = rate_limited_call(client.app.bsky.actor.get_profile, profile_params)
 
             # Extract relevant fields
+            # Convert lastPostAt from UTC to JST
+            last_post_at_utc = last_post_times.get(did, '')
+            last_post_at_jst = ''
+            if last_post_at_utc:
+                try:
+                    # Parse UTC timestamp and convert to JST
+                    utc_time = datetime.fromisoformat(last_post_at_utc.replace('Z', '+00:00'))
+                    jst_time = utc_time.astimezone(JST)
+                    last_post_at_jst = jst_time.isoformat()
+                except:
+                    last_post_at_jst = last_post_at_utc  # Fallback to original if conversion fails
+
             profiles[did] = {
                 "did": profile.did,
                 "handle": profile.handle,
@@ -128,6 +150,7 @@ def fetch_user_profiles(client: Client, dids: List[str]) -> Dict[str, Dict]:
                 "postsCount": getattr(profile, 'posts_count', 0),
                 "createdAt": getattr(profile, 'created_at', ''),
                 "avatar": getattr(profile, 'avatar', ''),
+                "lastPostAt": last_post_at_jst,
                 "updated_at": get_jst_now().isoformat()
             }
 
@@ -253,6 +276,7 @@ def generate_graph_json(
             "postsCount": profile.get("postsCount", 0),
             "createdAt": profile.get("createdAt", ""),
             "avatar": profile.get("avatar", ""),
+            "lastPostAt": profile.get("lastPostAt", ""),
             "size": max(5, min(50, profile.get("followersCount", 0) / 10))  # Node size based on followers
         }
         for did, profile in profiles.items()
@@ -419,14 +443,14 @@ def lambda_handler(event, context):
             print(f"\n[HANDLER] Processing hashtag: #{hashtag}")
 
             # Step 1: Search for posts and extract DIDs (new users)
-            new_dids = search_hashtag_posts(client, hashtag, limit=USERS_PER_HASHTAG)
+            new_dids, last_post_times = search_hashtag_posts(client, hashtag, limit=USERS_PER_HASHTAG)
 
             if not new_dids:
                 print(f"[HANDLER] No DIDs found for #{hashtag}, skipping")
                 continue
 
             # Step 2: Fetch user profiles (new users)
-            new_profiles = fetch_user_profiles(client, new_dids)
+            new_profiles = fetch_user_profiles(client, new_dids, last_post_times)
 
             if not new_profiles:
                 print(f"[HANDLER] No profiles fetched for #{hashtag}, skipping")
