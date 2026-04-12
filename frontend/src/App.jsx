@@ -22,6 +22,7 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showInfo, setShowInfo] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
 
   const apiEndpoint =
@@ -319,7 +320,9 @@ export default function App() {
         });
 
         // Now apply highlight for selected node
-        setSelectedNode(graph.getNodeAttributes(node));
+        const nodeAttrs = graph.getNodeAttributes(node);
+        nodeAttrs.id = node; // Include node ID for ranking lookup
+        setSelectedNode(nodeAttrs);
 
         const neighbors = graph.neighbors(node);
         const selectedNodeSet = new Set([node, ...neighbors]);
@@ -431,6 +434,13 @@ export default function App() {
               </form>
             </>
           )}
+          <button
+            onClick={() => setShowStats(!showStats)}
+            className="stats-btn"
+            title="統計情報"
+          >
+            グラフ情報
+          </button>
         </h1>
         {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
       </div>
@@ -489,6 +499,90 @@ export default function App() {
           </>
         )}
 
+        {showStats && graphData?.top_users && (
+          <>
+            <div className="modal-overlay" onClick={() => setShowStats(false)} />
+            <div className="stats-modal" style={{ top: `${headerHeight}px`, maxHeight: `calc(100vh - ${headerHeight}px)` }}>
+              <div className="stats-modal-header">
+                <h2>ハッシュタグ影響度ランキング</h2>
+                <button
+                  onClick={() => setShowStats(false)}
+                  className="close-btn"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="stats-modal-content">
+                {graphData.top_users.slice(0, 100).map((user, index) => (
+                  <div
+                    key={user.id}
+                    className={`ranking-card ${selectedNode?.id === user.id ? 'selected' : ''}`}
+                    onClick={() => {
+                      if (sigmaRef.current) {
+                        const graph = sigmaRef.current.getGraph();
+                        const nodeAttrs = graph.getNodeAttributes(user.id);
+                        if (nodeAttrs) {
+                          // Reset all nodes and edges to original colors
+                          graph.forEachNode(n => {
+                            graph.setNodeAttribute(n, 'color', '#f5d963');
+                          });
+                          graph.forEachEdge(e => {
+                            const edgeData = graph.getEdgeAttributes(e);
+                            graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+                          });
+
+                          // Apply highlight for selected node
+                          nodeAttrs.id = user.id;
+                          setSelectedNode(nodeAttrs);
+
+                          const neighbors = graph.neighbors(user.id);
+                          const selectedNodeSet = new Set([user.id, ...neighbors]);
+
+                          // Grayscale unrelated nodes
+                          graph.forEachNode(n => {
+                            if (!selectedNodeSet.has(n)) {
+                              graph.setNodeAttribute(n, 'color', '#aaa');
+                            }
+                          });
+
+                          // Collect and highlight connected edges
+                          const connectedEdges = new Set();
+                          graph.forEachOutboundEdge(user.id, e => {
+                            connectedEdges.add(e);
+                          });
+                          graph.forEachInboundEdge(user.id, e => {
+                            connectedEdges.add(e);
+                          });
+
+                          graph.forEachEdge(e => {
+                            if (!connectedEdges.has(e)) {
+                              graph.setEdgeAttribute(e, 'color', '#222222');
+                            }
+                          });
+                        }
+                      }
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="ranking-badge">{index + 1}位</div>
+                    <div className="ranking-card-header">
+                      {user.avatar && (
+                        <img src={user.avatar} alt="" className="ranking-card-avatar" />
+                      )}
+                      <div className="ranking-card-title">{user.displayName || 'N/A'}</div>
+                    </div>
+                    <div className="ranking-card-stats">
+                      <span>スコア: <strong>{user.score}</strong></span>
+                      <span>エッジ: <strong>{user.stats.one_way_followers + user.stats.mutual_followers}</strong></span>
+                      <span>投稿: <strong>{user.stats.posts_count}</strong></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         {selectedNode && (
           <div
             className="user-panel"
@@ -517,6 +611,16 @@ export default function App() {
               <span>フォロワー: <strong>{selectedNode.followersCount || 0}</strong></span>
               <span>投稿数: <strong>{selectedNode.postsCount || 0}</strong></span>
             </div>
+            {graphData?.top_users && (
+              <div className="stats-row">
+                {(() => {
+                  const rank = graphData.top_users.findIndex(u => u.id === selectedNode.id);
+                  return rank >= 0 ? (
+                    <span>ハッシュタグ影響度: <strong>{rank + 1}位</strong></span>
+                  ) : null;
+                })()}
+              </div>
+            )}
           </div>
         )}
       </div>
