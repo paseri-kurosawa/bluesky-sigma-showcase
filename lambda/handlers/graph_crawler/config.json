@@ -17,5 +17,14 @@
   "storage": {
     "s3_bucket": "bluesky-sigma-showcase-878311109818",
     "s3_prefix": "sigma-graph/"
+  },
+  "ranking": {
+    "top_n": 5,
+    "scoring": {
+      "one_way_follower_weight": 1.0,
+      "mutual_follower_weight": 1.5,
+      "posts_count_base": 100,
+      "posts_count_weight": 1.0
+    }
   }
 }

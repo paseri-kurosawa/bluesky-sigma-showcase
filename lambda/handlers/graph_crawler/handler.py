@@ -406,7 +406,85 @@ def save_graph_to_s3(graph_json: Dict, hashtag: str):
         raise
 
 
-# === Step 6: Merge all hashtags into unified graph ===
+# === Step 6: Calculate TOP5 users by influence score ===
+def calculate_top5_users(graph_json: Dict, config: Dict) -> List[Dict]:
+    """
+    Calculate TOP5 most influential users in the graph.
+
+    Scoring formula:
+    - 片方向フォロー: one_way_follower_weight pt per edge
+    - 相互フォロー: mutual_follower_weight pt per edge (not double-counted)
+    - ポスト数: log_base(postsCount) * posts_count_weight pt
+
+    Args:
+        graph_json: Graph data with nodes and edges
+        config: Configuration dict with scoring parameters
+
+    Returns:
+        List of TOP5 users with scores
+    """
+    import math
+
+    nodes = {node['id']: node for node in graph_json.get('nodes', [])}
+    edges = graph_json.get('edges', [])
+
+    # Load scoring parameters from config
+    scoring_config = config.get('ranking', {}).get('scoring', {})
+    one_way_weight = scoring_config.get('one_way_follower_weight', 1.0)
+    mutual_weight = scoring_config.get('mutual_follower_weight', 1.5)
+    posts_base = scoring_config.get('posts_count_base', 100)
+    posts_weight = scoring_config.get('posts_count_weight', 1.0)
+    top_n = config.get('ranking', {}).get('top_n', 5)
+
+    # Count followers and mutual followers for each node
+    follower_count = defaultdict(int)
+    mutual_count = defaultdict(int)
+
+    for edge in edges:
+        source = edge['source']
+        target = edge['target']
+        is_mutual = edge.get('mutual', False)
+
+        # target receives a follower
+        follower_count[target] += 1
+
+        # If mutual, count it separately
+        if is_mutual:
+            mutual_count[target] += 1
+
+    # Calculate scores for all nodes
+    scores = []
+    for node_id, node_data in nodes.items():
+        one_way_followers = follower_count[node_id] - mutual_count[node_id]
+        mutual_followers = mutual_count[node_id]
+        posts_count = node_data.get('postsCount', 1)
+
+        # Score formula: one_way * weight1 + mutual * weight2 + log_base(posts) * weight3
+        try:
+            log_score = math.log(max(posts_count, 1), posts_base) * posts_weight
+        except ValueError:
+            log_score = 0
+
+        score = (one_way_followers * one_way_weight) + (mutual_followers * mutual_weight) + log_score
+
+        scores.append({
+            'id': node_id,
+            'displayName': node_data.get('displayName', node_data.get('label', '')),
+            'avatar': node_data.get('avatar', ''),
+            'score': round(score, 2),
+            'stats': {
+                'one_way_followers': one_way_followers,
+                'mutual_followers': mutual_followers,
+                'posts_count': posts_count
+            }
+        })
+
+    # Sort by score descending and return top N
+    scores.sort(key=lambda x: x['score'], reverse=True)
+    return scores[:top_n]
+
+
+# === Step 7: Merge all hashtags into unified graph ===
 def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
     """
     Merge graphs from all hashtags into a single unified graph.
@@ -554,6 +632,11 @@ def lambda_handler(event, context):
 
             # Step 4.5: Merge with previous data
             merged_graph = merge_with_previous_graph(graph_json, hashtag)
+
+            # Step 4.6: Calculate TOP5 users and add to graph
+            top_users = calculate_top5_users(merged_graph, config)
+            merged_graph['top_users'] = top_users
+            print(f"[TOP5] Calculated TOP5 for #{hashtag}: {[u['displayName'] for u in top_users]}")
 
             # Step 5: Save to S3
             save_graph_to_s3(merged_graph, hashtag)
