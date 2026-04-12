@@ -105,6 +105,8 @@ export default function App() {
     e.preventDefault();
     if (!searchQuery.trim() || !graphData || !sigmaRef.current) return;
 
+    setSelectedFilterHashtag(null);
+
     const query = searchQuery.toLowerCase();
     const foundNode = graphData.nodes.find(
       (node) =>
@@ -232,6 +234,7 @@ export default function App() {
       setError(null);
       setGraphData(null);
       setSelectedNode(null);
+      setSelectedFilterHashtag(null);
 
       try {
         const url = selectedHashtag
@@ -414,6 +417,7 @@ export default function App() {
       // Background click handler
       sigma.on('clickStage', () => {
         setSelectedNode(null);
+        setSelectedFilterHashtag(null);
 
         // Reset all nodes and edges to original colors
         graph.forEachNode(n => {
@@ -449,6 +453,90 @@ export default function App() {
       }
     };
   }, [graphData]);
+
+  // Handle hashtag filter highlighting
+  useEffect(() => {
+    if (!sigmaRef.current || !graphData || selectedHashtag !== '統合') return;
+
+    const graph = sigmaRef.current.getGraph();
+
+    if (!selectedFilterHashtag) {
+      // フィルター解除: 元の色に戻す
+      graph.forEachNode(n => {
+        const nodeAttrs = graph.getNodeAttributes(n);
+        // 直近投稿はオレンジ、それ以外は黄色
+        let nodeColor = '#f5d963';
+        if (nodeAttrs.lastPostAt) {
+          const lastPostTime = new Date(nodeAttrs.lastPostAt);
+          const now = new Date();
+          const diffHours = (now - lastPostTime) / (1000 * 60 * 60);
+          if (diffHours <= 2) {
+            nodeColor = '#ff6b4a';
+          }
+        }
+        graph.setNodeAttribute(n, 'color', nodeColor);
+      });
+
+      graph.forEachEdge(e => {
+        const edgeData = graph.getEdgeAttributes(e);
+        graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+      });
+
+      return;
+    }
+
+    // フィルター適用: 全ノード・エッジをリセットしてから、選択ハッシュタグに属さないノードをグレーアウト
+    // Step 1: リセット
+    graph.forEachNode(n => {
+      const nodeAttrs = graph.getNodeAttributes(n);
+      let nodeColor = '#f5d963';
+      if (nodeAttrs.lastPostAt) {
+        const lastPostTime = new Date(nodeAttrs.lastPostAt);
+        const now = new Date();
+        const diffHours = (now - lastPostTime) / (1000 * 60 * 60);
+        if (diffHours <= 2) {
+          nodeColor = '#ff6b4a';
+        }
+      }
+      graph.setNodeAttribute(n, 'color', nodeColor);
+    });
+
+    graph.forEachEdge(e => {
+      const edgeData = graph.getEdgeAttributes(e);
+      graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+    });
+
+    // Step 2: フィルター適用
+    const filteredNodes = new Set();
+    graph.forEachNode(n => {
+      const nodeAttrs = graph.getNodeAttributes(n);
+      const nodeHashtags = nodeAttrs.hashtags || [];
+
+      // '#' の有無に対応した比較
+      const hasHashtag = nodeHashtags.some(tag => {
+        const normalizedTag = tag.startsWith('#') ? tag.slice(1) : tag;
+        const normalizedFilter = selectedFilterHashtag.startsWith('#')
+          ? selectedFilterHashtag.slice(1)
+          : selectedFilterHashtag;
+        return normalizedTag === normalizedFilter;
+      });
+
+      if (hasHashtag) {
+        filteredNodes.add(n);
+      } else {
+        graph.setNodeAttribute(n, 'color', '#aaa'); // Gray
+      }
+    });
+
+    // Step 3: エッジのハイライト
+    graph.forEachEdge((edge, attributes, source, target) => {
+      if (filteredNodes.has(source) && filteredNodes.has(target)) {
+        graph.setEdgeAttribute(edge, 'color', attributes.mutual ? '#b0b0b0' : '#505050');
+      } else {
+        graph.setEdgeAttribute(edge, 'color', '#222222');
+      }
+    });
+  }, [selectedFilterHashtag, graphData, selectedHashtag]);
 
   return (
     <div className="app-container">
@@ -571,6 +659,14 @@ export default function App() {
                   >
                     ランキング
                   </button>
+                  {selectedHashtag === '統合' && (
+                    <button
+                      className={`stats-tab ${statsTab === 'hashtags' ? 'active' : ''}`}
+                      onClick={() => setStatsTab('hashtags')}
+                    >
+                      ハッシュタグ
+                    </button>
+                  )}
                   <button
                     className={`stats-tab ${statsTab === 'stats' ? 'active' : ''}`}
                     onClick={() => setStatsTab('stats')}
@@ -675,6 +771,58 @@ export default function App() {
                       </div>
                     ))}
                   </>
+                )}
+                {statsTab === 'hashtags' && (
+                  <div className="hashtags-filter-container">
+                    {selectedFilterHashtag && (
+                      <div className="filter-status">
+                        <span className="filter-active-label">
+                          フィルター適用中: #{selectedFilterHashtag}
+                        </span>
+                        <button
+                          className="filter-clear-btn"
+                          onClick={() => setSelectedFilterHashtag(null)}
+                        >
+                          解除
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="hashtags-list">
+                      {hashtags.filter(tag => tag !== '統合').length === 0 ? (
+                        <div className="no-hashtags-message">
+                          利用可能なハッシュタグがありません
+                        </div>
+                      ) : (
+                        hashtags
+                          .filter(tag => tag !== '統合')
+                          .map(tag => (
+                            <div
+                              key={tag}
+                              className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''}`}
+                              onClick={() => {
+                                if (selectedFilterHashtag === tag) {
+                                  setSelectedFilterHashtag(null);
+                                } else {
+                                  setSelectedFilterHashtag(tag);
+                                }
+                              }}
+                            >
+                              <span className="hashtag-filter-name">#{tag}</span>
+                              <span className="hashtag-filter-count">
+                                {graphData?.nodes?.filter(node => {
+                                  const nodeHashtags = node.hashtags || [];
+                                  return nodeHashtags.some(t => {
+                                    const normalizedTag = t.startsWith('#') ? t.slice(1) : t;
+                                    return normalizedTag === tag;
+                                  });
+                                }).length || 0} ノード
+                              </span>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
                 )}
                 {statsTab === 'stats' && (
                   <div className="stats-info-container">

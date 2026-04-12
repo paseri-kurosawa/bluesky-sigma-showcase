@@ -667,3 +667,101 @@ body {
   font-weight: 600;
   word-break: break-word;
 }
+
+.hashtags-filter-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.filter-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: #e3f2fd;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  margin-bottom: 0.3rem;
+}
+
+.filter-active-label {
+  color: #1976d2;
+  font-weight: 600;
+  flex: 1;
+}
+
+.filter-clear-btn {
+  padding: 0.2rem 0.5rem;
+  background: white;
+  border: 1px solid #1da1f2;
+  border-radius: 3px;
+  color: #1da1f2;
+  font-size: 0.65rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-clear-btn:hover {
+  background: #1da1f2;
+  color: white;
+}
+
+.hashtags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.hashtag-filter-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: white;
+  border: 2px solid #eee;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.7rem;
+}
+
+.hashtag-filter-item:hover {
+  border-color: #1da1f2;
+  background: #f5f9ff;
+}
+
+.hashtag-filter-item.selected {
+  border-color: #1da1f2;
+  background: #e3f2fd;
+}
+
+.hashtag-filter-name {
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+}
+
+.hashtag-filter-count {
+  font-size: 0.65rem;
+  color: #666;
+  background: #f5f5f5;
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+}
+
+.hashtag-filter-item.selected .hashtag-filter-count {
+  background: white;
+  color: #1da1f2;
+}
+
+.no-hashtags-message {
+  padding: 1rem;
+  text-align: center;
+  color: #666;
+  font-size: 0.7rem;
+}

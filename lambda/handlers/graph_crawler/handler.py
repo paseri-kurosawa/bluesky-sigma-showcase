@@ -101,7 +101,7 @@ def search_hashtag_posts(client: Client, hashtag: str, limit: int = 100) -> Tupl
 
 
 # === Step 2: Fetch user profiles ===
-def fetch_user_profiles(client: Client, dids: List[str], last_post_times: Dict[str, str] = None) -> Dict[str, Dict]:
+def fetch_user_profiles(client: Client, dids: List[str], last_post_times: Dict[str, str] = None, hashtag: str = None) -> Dict[str, Dict]:
     """
     Fetch detailed user profile information for each DID.
 
@@ -109,11 +109,12 @@ def fetch_user_profiles(client: Client, dids: List[str], last_post_times: Dict[s
         client: AT Protocol client
         dids: List of user DIDs
         last_post_times: Optional dict mapping DID -> indexed_at of latest post
+        hashtag: The hashtag this profile group belongs to
 
     Returns:
         Dict mapping DID -> profile data
     """
-    print(f"[PROFILES] Fetching profiles for {len(dids)} users...")
+    print(f"[PROFILES] Fetching profiles for {len(dids)} users from #{hashtag}...")
 
     if last_post_times is None:
         last_post_times = {}
@@ -141,7 +142,7 @@ def fetch_user_profiles(client: Client, dids: List[str], last_post_times: Dict[s
                 except:
                     last_post_at_jst = last_post_at_utc  # Fallback to original if conversion fails
 
-            profiles[did] = {
+            node_data = {
                 "did": profile.did,
                 "handle": profile.handle,
                 "displayName": getattr(profile, 'display_name', ''),
@@ -151,8 +152,13 @@ def fetch_user_profiles(client: Client, dids: List[str], last_post_times: Dict[s
                 "createdAt": getattr(profile, 'created_at', ''),
                 "avatar": getattr(profile, 'avatar', ''),
                 "lastPostAt": last_post_at_jst,
-                "updated_at": get_jst_now().isoformat()
             }
+
+            # Add hashtags if provided
+            if hashtag:
+                node_data["hashtags"] = [hashtag]
+
+            profiles[did] = node_data
 
             if (i + 1) % 10 == 0:
                 print(f"  [PROGRESS] {i + 1}/{len(dids)} profiles fetched")
@@ -277,6 +283,7 @@ def generate_graph_json(
             "createdAt": profile.get("createdAt", ""),
             "avatar": profile.get("avatar", ""),
             "lastPostAt": profile.get("lastPostAt", ""),
+            "hashtags": profile.get("hashtags", [hashtag] if hashtag else []),
             "size": max(5, min(50, profile.get("followersCount", 0) / 10))  # Node size based on followers
         }
         for did, profile in profiles.items()
@@ -343,7 +350,19 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
 
     # Update existing users with new profile data
     for did, new_node in new_nodes_dict.items():
+        if did in previous_nodes_dict:
+            # Merge hashtags: preserve existing + add new
+            existing_hashtags = previous_nodes_dict[did].get('hashtags', [])
+            new_hashtags = new_node.get('hashtags', [])
+            merged_hashtags = list(set(existing_hashtags + new_hashtags))  # De-duplicate
+            new_node['hashtags'] = merged_hashtags
+
         previous_nodes_dict[did] = new_node
+
+    # Ensure all nodes have hashtags attribute (even those not in new_nodes_dict)
+    for node in previous_nodes_dict.values():
+        if 'hashtags' not in node or node['hashtags'] is None:
+            node['hashtags'] = []
 
     merged_nodes = list(previous_nodes_dict.values())
 
@@ -502,6 +521,7 @@ def calculate_top5_users(graph_json: Dict, config: Dict) -> List[Dict]:
 def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
     """
     Merge graphs from all hashtags into a single unified graph.
+    Each node tracks which hashtags it belongs to.
 
     Args:
         hashtags: List of all target hashtags
@@ -512,6 +532,7 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
     print("[UNIFIED] Merging all hashtags into unified graph...")
 
     unified_nodes_dict = {}  # DID -> node
+    node_hashtags_map = {}  # DID -> list of hashtags
     unified_edges_set = set()  # (source, target) pairs
 
     # Load each hashtag's data from S3
@@ -523,9 +544,20 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
             response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key_merged)
             hashtag_data = json.loads(response['Body'].read().decode('utf-8'))
 
-            # Add nodes (will overwrite if same DID exists)
+            # Add nodes and track hashtag membership
             for node in hashtag_data.get('nodes', []):
-                unified_nodes_dict[node['id']] = node
+                node_id = node['id']
+
+                # Initialize hashtag list if not exists
+                if node_id not in node_hashtags_map:
+                    node_hashtags_map[node_id] = []
+
+                # Add this hashtag to the node's list
+                if hashtag not in node_hashtags_map[node_id]:
+                    node_hashtags_map[node_id].append(hashtag)
+
+                # Store/update node
+                unified_nodes_dict[node_id] = node
 
             # Add edges (deduplicate by (source, target) pair)
             for edge in hashtag_data.get('edges', []):
@@ -539,6 +571,12 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
         except Exception as e:
             print(f"[UNIFIED ERROR] Failed to load #{hashtag}: {str(e)}")
             continue
+
+    # Add hashtags attribute to each node
+    for node_id, node in unified_nodes_dict.items():
+        node['hashtags'] = node_hashtags_map.get(node_id, [])
+
+    print(f"[UNIFIED] Added hashtag tracking to {len(unified_nodes_dict)} nodes")
 
     # Reconstruct edges from set
     unified_edges = [
@@ -555,6 +593,15 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
     unified_density = unified_edge_count / (unified_node_count * (unified_node_count - 1)) if unified_node_count > 1 else 0
     unified_average_degree = (unified_edge_count * 2) / unified_node_count if unified_node_count > 0 else 0
 
+    # Create a temporary graph object to calculate top users
+    temp_graph_data = {
+        "nodes": list(unified_nodes_dict.values()),
+        "edges": unified_edges
+    }
+
+    # Calculate top users for unified graph
+    top_users = calculate_top5_users(temp_graph_data, {"top_k": 100})
+
     unified_graph = {
         "nodes": list(unified_nodes_dict.values()),
         "edges": unified_edges,
@@ -567,10 +614,11 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
             "density": round(unified_density, 6),
             "averageDegree": round(unified_average_degree, 2),
             "source_hashtags": hashtags
-        }
+        },
+        "top_users": top_users
     }
 
-    print(f"[UNIFIED] Unified graph: {len(unified_nodes_dict)} total nodes, {len(unified_edges)} total edges")
+    print(f"[UNIFIED] Unified graph: {len(unified_nodes_dict)} total nodes, {len(unified_edges)} total edges, {len(top_users)} top users")
     return unified_graph
 
 
@@ -618,7 +666,7 @@ def lambda_handler(event, context):
                 continue
 
             # Step 2: Fetch user profiles (new users)
-            new_profiles = fetch_user_profiles(client, new_dids, last_post_times)
+            new_profiles = fetch_user_profiles(client, new_dids, last_post_times, hashtag)
 
             if not new_profiles:
                 print(f"[HANDLER] No profiles fetched for #{hashtag}, skipping")
