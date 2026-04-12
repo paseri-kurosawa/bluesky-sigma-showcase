@@ -417,23 +417,16 @@ export default function App() {
             ))}
           </select>
           {graphData && (
-            <>
-              <div className="stats-inline">
-                <div className="stat-group">ユーザー：<span className="stat-value-inline">{graphData.metadata.nodeCount}</span>人</div>
-                <div className="stat-group">エッジ：<span className="stat-value-inline">{graphData.metadata.edgeCount}</span>本</div>
-                <div className="stat-group">最終更新：<span className="stat-value-inline">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</span></div>
-              </div>
-              <form onSubmit={handleSearch} className="search-form">
-                <input
-                  type="text"
-                  placeholder="ユーザー名またはハンドルで検索..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="search-input"
-                />
-                <button type="submit" className="search-btn">検索</button>
-              </form>
-            </>
+            <form onSubmit={handleSearch} className="search-form">
+              <input
+                type="text"
+                placeholder="ユーザー名またはハンドルで検索..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-input"
+              />
+              <button type="submit" className="search-btn">検索</button>
+            </form>
           )}
           <button
             onClick={() => setShowStats(!showStats)}
