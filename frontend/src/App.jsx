@@ -611,6 +611,10 @@ export default function App() {
                       <div className="stats-info-value">{(graphData.metadata.density * 100).toFixed(4)}%</div>
                     </div>
                     <div className="stats-info-item">
+                      <div className="stats-info-label">平均次数</div>
+                      <div className="stats-info-value">{graphData.metadata.averageDegree}</div>
+                    </div>
+                    <div className="stats-info-item">
                       <div className="stats-info-label">最終更新</div>
                       <div className="stats-info-value">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</div>
                     </div>

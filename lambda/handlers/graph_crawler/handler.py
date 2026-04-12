@@ -285,6 +285,7 @@ def generate_graph_json(
     node_count = len(nodes)
     edge_count = len(edges)
     density = edge_count / (node_count * (node_count - 1)) if node_count > 1 else 0
+    average_degree = (edge_count * 2) / node_count if node_count > 0 else 0
 
     graph_json = {
         "nodes": nodes,
@@ -295,6 +296,7 @@ def generate_graph_json(
             "nodeCount": node_count,
             "edgeCount": edge_count,
             "density": round(density, 6),
+            "averageDegree": round(average_degree, 2),
             "generatedAt": get_jst_now().isoformat()
         }
     }
@@ -366,6 +368,7 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
     merged_node_count = len(merged_nodes)
     merged_edge_count = len(merged_edges_list)
     merged_density = merged_edge_count / (merged_node_count * (merged_node_count - 1)) if merged_node_count > 1 else 0
+    merged_average_degree = (merged_edge_count * 2) / merged_node_count if merged_node_count > 0 else 0
 
     merged_graph = {
         "nodes": merged_nodes,
@@ -376,7 +379,8 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
             "updated_at": get_jst_now().isoformat(),
             "nodeCount": merged_node_count,
             "edgeCount": merged_edge_count,
-            "density": round(merged_density, 6)
+            "density": round(merged_density, 6),
+            "averageDegree": round(merged_average_degree, 2)
         }
     }
 
@@ -549,6 +553,7 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
     unified_node_count = len(unified_nodes_dict)
     unified_edge_count = len(unified_edges)
     unified_density = unified_edge_count / (unified_node_count * (unified_node_count - 1)) if unified_node_count > 1 else 0
+    unified_average_degree = (unified_edge_count * 2) / unified_node_count if unified_node_count > 0 else 0
 
     unified_graph = {
         "nodes": list(unified_nodes_dict.values()),
@@ -560,6 +565,7 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
             "nodeCount": unified_node_count,
             "edgeCount": unified_edge_count,
             "density": round(unified_density, 6),
+            "averageDegree": round(unified_average_degree, 2),
             "source_hashtags": hashtags
         }
     }
