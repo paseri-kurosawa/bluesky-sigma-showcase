@@ -12,12 +12,13 @@ export default function App() {
   const [error, setError] = useState(null);
   const [hashtags, setHashtags] = useState([]);
   const [selectedHashtag, setSelectedHashtag] = useState(null);
+  const [selectedFilterHashtag, setSelectedFilterHashtag] = useState(null);
   const [graphData, setGraphData] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [panelPos, setPanelPos] = useState(() => ({
     x: 10,
-    y: window.innerHeight - 280
+    y: window.innerHeight - 380
   }));
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -112,31 +113,68 @@ export default function App() {
     );
 
     if (foundNode) {
-      const nodeAttrs = sigmaRef.current.getGraph().getNodeAttributes(foundNode.id);
-
+      const graph = sigmaRef.current.getGraph();
+      const nodeAttrs = graph.getNodeAttributes(foundNode.id);
       const camera = sigmaRef.current.getCamera();
       const bbox = sigmaRef.current.getBBox();
 
       // Convert graph coordinates to camera coordinates
       const width = bbox.x[1] - bbox.x[0];
       const height = bbox.y[1] - bbox.y[0];
-
       const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
       const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
 
-      // Animate to node position
+      // Animate to node position with maximum zoom
       camera.animate(
         {
           x: normalizedX,
           y: normalizedY,
           ratio: 0.01,
         },
-        {
-          duration: 500,
-        }
+        { duration: 600 }
       );
 
+      // Reset all nodes and edges to original colors
+      graph.forEachNode(n => {
+        graph.setNodeAttribute(n, 'color', '#f5d963');
+      });
+      graph.forEachEdge(e => {
+        const edgeData = graph.getEdgeAttributes(e);
+        graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+      });
+
+      // Apply highlight for selected node
+      nodeAttrs.id = foundNode.id;
       setSelectedNode(nodeAttrs);
+
+      const neighbors = graph.neighbors(foundNode.id);
+      const selectedNodeSet = new Set([foundNode.id, ...neighbors]);
+
+      // Set selected node to cyan, grayscale unrelated nodes
+      graph.forEachNode(n => {
+        if (n === foundNode.id) {
+          graph.setNodeAttribute(n, 'color', '#26C6DA'); // Cyan for selected node
+        } else if (!selectedNodeSet.has(n)) {
+          graph.setNodeAttribute(n, 'color', '#aaa');
+        }
+      });
+
+      // Collect connected edges
+      const connectedEdges = new Set();
+      graph.forEachOutboundEdge(foundNode.id, e => {
+        connectedEdges.add(e);
+      });
+      graph.forEachInboundEdge(foundNode.id, e => {
+        connectedEdges.add(e);
+      });
+
+      // Make unrelated edges very dark
+      graph.forEachEdge(e => {
+        if (!connectedEdges.has(e)) {
+          graph.setEdgeAttribute(e, 'color', '#222222');
+        }
+      });
+
       setError(null);
     } else {
       setError(`ユーザー「${searchQuery}」が見つかりません`);
@@ -247,6 +285,7 @@ export default function App() {
         postsCount: node.postsCount,
         avatar: node.avatar,
         lastPostAt: node.lastPostAt,
+        hashtags: node.hashtags || [],
         size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
         color: nodeColor,
         x: Math.random(),
@@ -311,6 +350,25 @@ export default function App() {
 
       // Node click handler
       sigma.on('clickNode', ({ node }) => {
+        // Animate camera to node position
+        const nodeAttrs = graph.getNodeAttributes(node);
+        const camera = sigma.getCamera();
+        const bbox = sigma.getBBox();
+
+        const width = bbox.x[1] - bbox.x[0];
+        const height = bbox.y[1] - bbox.y[0];
+        const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+        const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+        camera.animate(
+          {
+            x: normalizedX,
+            y: normalizedY,
+            ratio: 0.01,
+          },
+          { duration: 600 }
+        );
+
         // Reset all nodes and edges to original colors first
         graph.forEachNode(n => {
           graph.setNodeAttribute(n, 'color', '#f5d963');
@@ -321,16 +379,17 @@ export default function App() {
         });
 
         // Now apply highlight for selected node
-        const nodeAttrs = graph.getNodeAttributes(node);
         nodeAttrs.id = node; // Include node ID for ranking lookup
         setSelectedNode(nodeAttrs);
 
         const neighbors = graph.neighbors(node);
         const selectedNodeSet = new Set([node, ...neighbors]);
 
-        // Grayscale unrelated nodes only
+        // Set selected node to cyan, grayscale unrelated nodes
         graph.forEachNode(n => {
-          if (!selectedNodeSet.has(n)) {
+          if (n === node) {
+            graph.setNodeAttribute(n, 'color', '#26C6DA'); // Cyan for selected node
+          } else if (!selectedNodeSet.has(n)) {
             graph.setNodeAttribute(n, 'color', '#aaa');
           }
         });
@@ -478,6 +537,7 @@ export default function App() {
                 <p>• ノードのサイズはフォロワー数に比例します。</p>
                 <p>• エッジ（線）がフォロー関係を表します。</p>
                 <p>• 濃い灰色の線は相互フォロー、薄い灰色は片方向フォローです。</p>
+                <p>• 選択しているユーザーは水色で表示されます。</p>
                 <p>• 直近で関連するポストをしているユーザーはオレンジ色で表示されます。</p>
 
                 <p><strong>機能</strong></p>
@@ -537,6 +597,24 @@ export default function App() {
                             const graph = sigmaRef.current.getGraph();
                             const nodeAttrs = graph.getNodeAttributes(user.id);
                             if (nodeAttrs) {
+                              // Animate camera to node position
+                              const camera = sigmaRef.current.getCamera();
+                              const bbox = sigmaRef.current.getBBox();
+
+                              const width = bbox.x[1] - bbox.x[0];
+                              const height = bbox.y[1] - bbox.y[0];
+                              const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+                              const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+                              camera.animate(
+                                {
+                                  x: normalizedX,
+                                  y: normalizedY,
+                                  ratio: 0.01,
+                                },
+                                { duration: 600 }
+                              );
+
                               // Reset all nodes and edges to original colors
                               graph.forEachNode(n => {
                                 graph.setNodeAttribute(n, 'color', '#f5d963');
@@ -552,6 +630,9 @@ export default function App() {
 
                               const neighbors = graph.neighbors(user.id);
                               const selectedNodeSet = new Set([user.id, ...neighbors]);
+
+                              // Set selected node to cyan
+                              graph.setNodeAttribute(user.id, 'color', '#26C6DA');
 
                               // Grayscale unrelated nodes
                               graph.forEachNode(n => {
@@ -652,6 +733,17 @@ export default function App() {
               <span>フォロワー: <strong>{selectedNode.followersCount || 0}</strong></span>
               <span>投稿数: <strong>{selectedNode.postsCount || 0}</strong></span>
             </div>
+            {selectedNode.hashtags && selectedNode.hashtags.length > 0 && (
+              <div className="stats-row">
+                <span style={{ fontSize: '0.65rem', color: '#666' }}>
+                  使用ハッシュタグ: <strong>
+                    {selectedNode.hashtags.map((tag, idx) => (
+                      <div key={idx}>{tag.startsWith('#') ? tag : `#${tag}`}</div>
+                    ))}
+                  </strong>
+                </span>
+              </div>
+            )}
             {graphData?.top_users && (
               <div className="stats-row">
                 {(() => {
