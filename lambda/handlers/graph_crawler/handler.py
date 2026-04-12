@@ -479,9 +479,9 @@ def calculate_top5_users(graph_json: Dict, config: Dict) -> List[Dict]:
             }
         })
 
-    # Sort by score descending and return top N
+    # Sort by score descending and return all users ranked
     scores.sort(key=lambda x: x['score'], reverse=True)
-    return scores[:top_n]
+    return scores
 
 
 # === Step 7: Merge all hashtags into unified graph ===
