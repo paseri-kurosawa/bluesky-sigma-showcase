@@ -473,12 +473,12 @@ export default function App() {
                 <p><strong>このサイトは何？</strong></p>
                 <p><a href="https://bsky.app/" target="_blank" rel="noopener noreferrer">Bluesky</a>の日本語圏ユーザーネットワークを可視化するツールです。<br />選択したハッシュタグに関連するユーザーをグラフとして表示します。<br />反映されている情報は必ずしも最新ではありません。</p>
 
-                <p><strong>グラフについて</strong></p>
-                <p>• 各ノード（円）がユーザーを表します</p>
-                <p>• ノードのサイズはフォロワー数に比例します</p>
-                <p>• エッジ（線）がフォロー関係を表します</p>
-                <p>• 濃い灰色の線は相互フォロー、薄い灰色は片方向フォローです</p>
-                <p>• 直近で関連するポストをしているユーザーはオレンジ色で表示されます</p>
+                <p><strong>ネットワークグラフについて</strong></p>
+                <p>• 各ノード（円）がユーザーを表します。</p>
+                <p>• ノードのサイズはフォロワー数に比例します。</p>
+                <p>• エッジ（線）がフォロー関係を表します。</p>
+                <p>• 濃い灰色の線は相互フォロー、薄い灰色は片方向フォローです。</p>
+                <p>• 直近で関連するポストをしているユーザーはオレンジ色で表示されます。</p>
 
                 <p><strong>機能</strong></p>
                 <p>• ハッシュタグを選択してグラフを切り替え</p>
@@ -486,7 +486,13 @@ export default function App() {
                 <p>• ズームコントロールで拡大・縮小</p>
                 <p>• ノードをクリックするとユーザー情報を表示</p>
 
-                <hr style={{ margin: '20px 0', border: 'none', borderTop: '1px solid #ccc' }} />
+                <p><strong>グラフ情報について</strong></p>
+                <p>• ハッシュタグ内での影響力が強いユーザーのランキングが表示されます。</p>
+                <p>• ランキングは、フォロー関係をベースにした独自計算式でスコアリングされます。</p>
+                <p>• 統計情報は、各ネットワークグラフごとに計算されています。</p>
+              </div>
+              <div className="info-modal-footer">
+                <hr style={{ margin: '0.5rem 0', border: 'none', borderTop: '1px solid #ccc' }} />
                 <p style={{ fontSize: '0.9em', color: '#666' }}>created by <a href="https://bsky.app/profile/paseri-kurosawa.bsky.social" target="_blank" rel="noopener noreferrer">@paseri-kurosawa.bsky.social</a></p>
               </div>
             </div>
