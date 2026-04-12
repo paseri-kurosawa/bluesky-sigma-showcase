@@ -282,14 +282,19 @@ def generate_graph_json(
         for did, profile in profiles.items()
     ]
 
+    node_count = len(nodes)
+    edge_count = len(edges)
+    density = edge_count / (node_count * (node_count - 1)) if node_count > 1 else 0
+
     graph_json = {
         "nodes": nodes,
         "edges": edges,
         "metadata": {
             "hashtag": hashtag,
             "timestamp": get_jst_now().isoformat(),
-            "nodeCount": len(nodes),
-            "edgeCount": len(edges),
+            "nodeCount": node_count,
+            "edgeCount": edge_count,
+            "density": round(density, 6),
             "generatedAt": get_jst_now().isoformat()
         }
     }
@@ -358,6 +363,10 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
 
     merged_edges_list = list(edge_dict.values())
 
+    merged_node_count = len(merged_nodes)
+    merged_edge_count = len(merged_edges_list)
+    merged_density = merged_edge_count / (merged_node_count * (merged_node_count - 1)) if merged_node_count > 1 else 0
+
     merged_graph = {
         "nodes": merged_nodes,
         "edges": merged_edges_list,
@@ -365,8 +374,9 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
             "hashtag": hashtag,
             "timestamp": new_graph["metadata"]["timestamp"],
             "updated_at": get_jst_now().isoformat(),
-            "nodeCount": len(merged_nodes),
-            "edgeCount": len(merged_edges_list)
+            "nodeCount": merged_node_count,
+            "edgeCount": merged_edge_count,
+            "density": round(merged_density, 6)
         }
     }
 
@@ -536,6 +546,10 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
         for source, target in unified_edges_set
     ]
 
+    unified_node_count = len(unified_nodes_dict)
+    unified_edge_count = len(unified_edges)
+    unified_density = unified_edge_count / (unified_node_count * (unified_node_count - 1)) if unified_node_count > 1 else 0
+
     unified_graph = {
         "nodes": list(unified_nodes_dict.values()),
         "edges": unified_edges,
@@ -543,8 +557,9 @@ def merge_all_hashtags_to_unified_graph(hashtags: List[str]) -> Dict:
             "hashtag": "統合",
             "timestamp": get_jst_now().isoformat(),
             "updated_at": get_jst_now().isoformat(),
-            "nodeCount": len(unified_nodes_dict),
-            "edgeCount": len(unified_edges),
+            "nodeCount": unified_node_count,
+            "edgeCount": unified_edge_count,
+            "density": round(unified_density, 6),
             "source_hashtags": hashtags
         }
     }

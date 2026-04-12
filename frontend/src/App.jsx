@@ -23,6 +23,7 @@ export default function App() {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showInfo, setShowInfo] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [statsTab, setStatsTab] = useState('ranking');
   const [headerHeight, setHeaderHeight] = useState(0);
 
   const apiEndpoint =
@@ -504,7 +505,20 @@ export default function App() {
             <div className="modal-overlay" onClick={() => setShowStats(false)} />
             <div className="stats-modal" style={{ top: `${headerHeight}px`, maxHeight: `calc(100vh - ${headerHeight}px)` }}>
               <div className="stats-modal-header">
-                <h2>ハッシュタグ影響度ランキング</h2>
+                <div className="stats-modal-tabs">
+                  <button
+                    className={`stats-tab ${statsTab === 'ranking' ? 'active' : ''}`}
+                    onClick={() => setStatsTab('ranking')}
+                  >
+                    ランキング
+                  </button>
+                  <button
+                    className={`stats-tab ${statsTab === 'stats' ? 'active' : ''}`}
+                    onClick={() => setStatsTab('stats')}
+                  >
+                    統計情報
+                  </button>
+                </div>
                 <button
                   onClick={() => setShowStats(false)}
                   className="close-btn"
@@ -513,71 +527,95 @@ export default function App() {
                 </button>
               </div>
               <div className="stats-modal-content">
-                {graphData.top_users.slice(0, 100).map((user, index) => (
-                  <div
-                    key={user.id}
-                    className={`ranking-card ${selectedNode?.id === user.id ? 'selected' : ''}`}
-                    onClick={() => {
-                      if (sigmaRef.current) {
-                        const graph = sigmaRef.current.getGraph();
-                        const nodeAttrs = graph.getNodeAttributes(user.id);
-                        if (nodeAttrs) {
-                          // Reset all nodes and edges to original colors
-                          graph.forEachNode(n => {
-                            graph.setNodeAttribute(n, 'color', '#f5d963');
-                          });
-                          graph.forEachEdge(e => {
-                            const edgeData = graph.getEdgeAttributes(e);
-                            graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
-                          });
+                {statsTab === 'ranking' && (
+                  <>
+                    {graphData.top_users.slice(0, 100).map((user, index) => (
+                      <div
+                        key={user.id}
+                        className={`ranking-card ${selectedNode?.id === user.id ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (sigmaRef.current) {
+                            const graph = sigmaRef.current.getGraph();
+                            const nodeAttrs = graph.getNodeAttributes(user.id);
+                            if (nodeAttrs) {
+                              // Reset all nodes and edges to original colors
+                              graph.forEachNode(n => {
+                                graph.setNodeAttribute(n, 'color', '#f5d963');
+                              });
+                              graph.forEachEdge(e => {
+                                const edgeData = graph.getEdgeAttributes(e);
+                                graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+                              });
 
-                          // Apply highlight for selected node
-                          nodeAttrs.id = user.id;
-                          setSelectedNode(nodeAttrs);
+                              // Apply highlight for selected node
+                              nodeAttrs.id = user.id;
+                              setSelectedNode(nodeAttrs);
 
-                          const neighbors = graph.neighbors(user.id);
-                          const selectedNodeSet = new Set([user.id, ...neighbors]);
+                              const neighbors = graph.neighbors(user.id);
+                              const selectedNodeSet = new Set([user.id, ...neighbors]);
 
-                          // Grayscale unrelated nodes
-                          graph.forEachNode(n => {
-                            if (!selectedNodeSet.has(n)) {
-                              graph.setNodeAttribute(n, 'color', '#aaa');
+                              // Grayscale unrelated nodes
+                              graph.forEachNode(n => {
+                                if (!selectedNodeSet.has(n)) {
+                                  graph.setNodeAttribute(n, 'color', '#aaa');
+                                }
+                              });
+
+                              // Collect and highlight connected edges
+                              const connectedEdges = new Set();
+                              graph.forEachOutboundEdge(user.id, e => {
+                                connectedEdges.add(e);
+                              });
+                              graph.forEachInboundEdge(user.id, e => {
+                                connectedEdges.add(e);
+                              });
+
+                              graph.forEachEdge(e => {
+                                if (!connectedEdges.has(e)) {
+                                  graph.setEdgeAttribute(e, 'color', '#222222');
+                                }
+                              });
                             }
-                          });
-
-                          // Collect and highlight connected edges
-                          const connectedEdges = new Set();
-                          graph.forEachOutboundEdge(user.id, e => {
-                            connectedEdges.add(e);
-                          });
-                          graph.forEachInboundEdge(user.id, e => {
-                            connectedEdges.add(e);
-                          });
-
-                          graph.forEachEdge(e => {
-                            if (!connectedEdges.has(e)) {
-                              graph.setEdgeAttribute(e, 'color', '#222222');
-                            }
-                          });
-                        }
-                      }
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className="ranking-badge">{index + 1}位</div>
-                    <div className="ranking-card-header">
-                      {user.avatar && (
-                        <img src={user.avatar} alt="" className="ranking-card-avatar" />
-                      )}
-                      <div className="ranking-card-title">{user.displayName || 'N/A'}</div>
+                          }
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="ranking-badge">{index + 1}位</div>
+                        <div className="ranking-card-header">
+                          {user.avatar && (
+                            <img src={user.avatar} alt="" className="ranking-card-avatar" />
+                          )}
+                          <div className="ranking-card-title">{user.displayName || 'N/A'}</div>
+                        </div>
+                        <div className="ranking-card-stats">
+                          <span>スコア: <strong>{user.score}</strong></span>
+                          <span>エッジ: <strong>{user.stats.one_way_followers + user.stats.mutual_followers}</strong></span>
+                          <span>投稿: <strong>{user.stats.posts_count}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {statsTab === 'stats' && (
+                  <div className="stats-info-container">
+                    <div className="stats-info-item">
+                      <div className="stats-info-label">ノード数</div>
+                      <div className="stats-info-value">{graphData.metadata.nodeCount}</div>
                     </div>
-                    <div className="ranking-card-stats">
-                      <span>スコア: <strong>{user.score}</strong></span>
-                      <span>エッジ: <strong>{user.stats.one_way_followers + user.stats.mutual_followers}</strong></span>
-                      <span>投稿: <strong>{user.stats.posts_count}</strong></span>
+                    <div className="stats-info-item">
+                      <div className="stats-info-label">エッジ数</div>
+                      <div className="stats-info-value">{graphData.metadata.edgeCount}</div>
+                    </div>
+                    <div className="stats-info-item">
+                      <div className="stats-info-label">ネットワーク密度</div>
+                      <div className="stats-info-value">{(graphData.metadata.density * 100).toFixed(4)}%</div>
+                    </div>
+                    <div className="stats-info-item">
+                      <div className="stats-info-label">最終更新</div>
+                      <div className="stats-info-value">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</div>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </>
