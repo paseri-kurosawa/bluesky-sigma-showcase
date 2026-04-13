@@ -113,6 +113,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       role: lambdaExecutionRole,
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
+      reservedConcurrentExecutions: 10,  // Limit concurrent executions to prevent abuse
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_PREFIX: 'sigma-graph/',
@@ -150,6 +151,12 @@ export class BlueskySigmaStack extends cdk.Stack {
     const hashtagResource = graphResource.addResource('{hashtag}');
     const hashtagLatestResource = hashtagResource.addResource('latest');
     hashtagLatestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
+
+    // /api/user/{handle}/top-post
+    const userResource = apiResource.addResource('user');
+    const handleResource = userResource.addResource('{handle}');
+    const topPostResource = handleResource.addResource('top-post');
+    topPostResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
     // === EventBridge Rule (Hourly Schedule) ===
     const crawlerRule = new events.Rule(this, 'HourlyGraphCrawlerRule', {

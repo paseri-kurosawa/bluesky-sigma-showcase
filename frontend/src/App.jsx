@@ -28,6 +28,9 @@ export default function App() {
   const [panelTab, setPanelTab] = useState('info');
   const [headerHeight, setHeaderHeight] = useState(0);
   const [recommendedUsers, setRecommendedUsers] = useState([]);
+  const [topPost, setTopPost] = useState(null);
+  const [topPostLoading, setTopPostLoading] = useState(false);
+  const [tabCooldown, setTabCooldown] = useState(0);
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
@@ -122,6 +125,27 @@ export default function App() {
     fetchGraphData();
   };
 
+  const handleFetchTopPost = async (handle) => {
+    if (tabCooldown > 0) return; // Block if in cooldown
+
+    setTopPostLoading(true);
+    setTabCooldown(1); // Start 1-second cooldown
+
+    try {
+      const response = await fetch(
+        `${apiEndpoint}/api/user/${encodeURIComponent(handle)}/top-post`
+      );
+      if (!response.ok) throw new Error('Failed to fetch top post');
+      const post = await response.json();
+      setTopPost(post);
+    } catch (err) {
+      console.error('Error fetching top post:', err);
+      setTopPost({ error: err.message });
+    } finally {
+      setTopPostLoading(false);
+    }
+  };
+
   const handlePanelMouseDown = (e) => {
     setIsDragging(true);
     setDragStart({
@@ -152,6 +176,20 @@ export default function App() {
       };
     }
   }, [isDragging, dragStart]);
+
+  // Tab cooldown timer
+  useEffect(() => {
+    if (tabCooldown <= 0) return;
+    const timer = setTimeout(() => setTabCooldown(tabCooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [tabCooldown]);
+
+  // Reset recommended users and top post when selected node changes
+  useEffect(() => {
+    setRecommendedUsers([]);
+    setTopPost(null);
+    setPanelTab('info');
+  }, [selectedNode?.id]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -924,12 +962,39 @@ export default function App() {
                   fontWeight: 500,
                   cursor: 'pointer',
                   textAlign: 'center',
+                  borderRight: '1px solid #eee',
                   borderBottom: panelTab === 'recommended' ? '2px solid #1da1f2' : 'none',
                   marginBottom: panelTab === 'recommended' ? '-1px' : '0',
                   transition: 'all 0.2s'
                 }}
               >
                 近いユーザー
+              </button>
+              <button
+                onClick={() => {
+                  if (topPost === null && !topPostLoading) {
+                    handleFetchTopPost(selectedNode.accountId);
+                  }
+                  setPanelTab('toppost');
+                }}
+                disabled={tabCooldown > 0}
+                style={{
+                  flex: 1,
+                  padding: '0.6rem 0.1rem',
+                  border: 'none',
+                  background: panelTab === 'toppost' ? 'white' : '#f9f9f9',
+                  color: panelTab === 'toppost' ? '#1da1f2' : '#666',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: tabCooldown > 0 ? 'not-allowed' : 'pointer',
+                  textAlign: 'center',
+                  borderBottom: panelTab === 'toppost' ? '2px solid #1da1f2' : 'none',
+                  marginBottom: panelTab === 'toppost' ? '-1px' : '0',
+                  transition: 'all 0.2s',
+                  opacity: tabCooldown > 0 ? 0.5 : 1
+                }}
+              >
+                {topPostLoading ? '読込中...' : 'トップポスト'}
               </button>
             </div>
 
@@ -1027,6 +1092,105 @@ export default function App() {
                         <span>ネットワーク影響度: <strong>{rank + 1}位</strong></span>
                       ) : null;
                     })()}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Top Post Tab */}
+            {panelTab === 'toppost' && (
+              <>
+                {topPostLoading ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.7rem' }}>
+                    トップポストを読み込み中...
+                  </div>
+                ) : topPost?.error ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.7rem' }}>
+                    ポストが見つかりません
+                  </div>
+                ) : topPost ? (
+                  <div style={{
+                    padding: '0.8rem',
+                    backgroundColor: '#f9f9f9',
+                    borderRadius: '4px',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      gap: '0.6rem',
+                      alignItems: 'flex-start'
+                    }}>
+                      {topPost.author?.avatar && (
+                        <img
+                          src={topPost.author.avatar}
+                          alt=""
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            flexShrink: 0
+                          }}
+                        />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 'bold', color: '#333' }}>
+                          {topPost.author?.displayName || 'N/A'}
+                        </div>
+                        <a
+                          href={`https://bsky.app/profile/${topPost.author?.handle}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: '#1da1f2',
+                            textDecoration: 'none',
+                            fontSize: '0.7rem'
+                          }}
+                        >
+                          @{topPost.author?.handle}
+                        </a>
+                      </div>
+                    </div>
+                    <div style={{
+                      lineHeight: '1.4',
+                      color: '#333',
+                      wordBreak: 'break-word',
+                      maxHeight: '150px',
+                      overflow: 'hidden',
+                      fontSize: '0.75rem',
+                      paddingRight: '0.8rem'
+                    }}>
+                      {topPost.record?.text}
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      gap: '1rem',
+                      fontSize: '0.7rem',
+                      color: '#666'
+                    }}>
+                      <span>❤️ {topPost.likeCount || 0}</span>
+                      <span>💬 {topPost.replyCount || 0}</span>
+                      <span>🔄 {topPost.repostCount || 0}</span>
+                    </div>
+                    <a
+                      href={`https://bsky.app/profile/${topPost.author?.handle}/post/${topPost.uri?.split('/').pop()}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#1da1f2',
+                        textDecoration: 'none',
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      Blueskyで見る →
+                    </a>
+                  </div>
+                ) : (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.7rem' }}>
+                    トップポストを取得するには、このタブをクリック
                   </div>
                 )}
               </>
