@@ -25,10 +25,62 @@ export default function App() {
   const [showInfo, setShowInfo] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [statsTab, setStatsTab] = useState('ranking');
+  const [panelTab, setPanelTab] = useState('info');
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [recommendedUsers, setRecommendedUsers] = useState([]);
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
+
+  // Calculate recommended users (2-hop connections)
+  const calculateRecommendedUsers = (userId) => {
+    if (!sigmaRef.current || !graphData) return [];
+
+    const graph = sigmaRef.current.getGraph();
+    const directConnections = new Set([userId]); // Start with the user itself
+
+    // Get all direct connections (both directions)
+    graph.forEachOutboundEdge(userId, (edge, attrs, source, target) => {
+      directConnections.add(target);
+    });
+    graph.forEachInboundEdge(userId, (edge, attrs, source, target) => {
+      directConnections.add(source);
+    });
+
+    // Get 2-hop connections
+    const twoHopCandidates = new Set();
+    directConnections.forEach(nodeId => {
+      // From direct connections, get their connections
+      graph.forEachOutboundEdge(nodeId, (edge, attrs, source, target) => {
+        if (!directConnections.has(target)) {
+          twoHopCandidates.add(target);
+        }
+      });
+      graph.forEachInboundEdge(nodeId, (edge, attrs, source, target) => {
+        if (!directConnections.has(source)) {
+          twoHopCandidates.add(source);
+        }
+      });
+    });
+
+    // Convert to array and shuffle
+    const candidates = Array.from(twoHopCandidates);
+    const shuffled = candidates.sort(() => Math.random() - 0.5);
+
+    // Get top 3 and fetch their data
+    const recommended = shuffled.slice(0, 3).map(nodeId => {
+      const nodeAttrs = graph.getNodeAttributes(nodeId);
+      return {
+        id: nodeId,
+        displayName: nodeAttrs.displayName || nodeAttrs.label,
+        accountId: nodeAttrs.accountId || nodeAttrs.label,
+        avatar: nodeAttrs.avatar,
+        followersCount: nodeAttrs.followersCount,
+      };
+    });
+
+    return recommended;
+  };
 
   // Zoom controls
   const handleZoomIn = () => {
@@ -826,49 +878,274 @@ export default function App() {
             className="user-panel"
             style={{
               left: `${panelPos.x}px`,
-              top: `${panelPos.y}px`,
-              cursor: isDragging ? 'grabbing' : 'grab'
+              top: `${panelPos.y}px`
             }}
-            onMouseDown={handlePanelMouseDown}
           >
-            {selectedNode.avatar && (
-              <div className="avatar-container">
-                <img key={selectedNode.label} src={selectedNode.avatar} alt="" className="user-avatar" />
-              </div>
+            {/* Tab buttons */}
+            <div
+              style={{ display: 'flex', gap: '0', borderBottom: '1px solid #eee', marginBottom: '0.6rem', marginLeft: '-0.6rem', marginRight: '-0.6rem', marginTop: '-0.6rem', paddingLeft: '0.6rem', paddingRight: '0.6rem', cursor: isDragging ? 'grabbing' : 'grab' }}
+              onMouseDown={handlePanelMouseDown}
+            >
+              <button
+                onClick={() => setPanelTab('info')}
+                style={{
+                  flex: 1,
+                  padding: '0.6rem 0.1rem',
+                  border: 'none',
+                  background: panelTab === 'info' ? 'white' : '#f9f9f9',
+                  color: panelTab === 'info' ? '#1da1f2' : '#666',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  borderRight: '1px solid #eee',
+                  borderBottom: panelTab === 'info' ? '2px solid #1da1f2' : 'none',
+                  marginBottom: panelTab === 'info' ? '-1px' : '0',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ユーザー情報
+              </button>
+              <button
+                onClick={() => {
+                  if (recommendedUsers.length === 0) {
+                    const recommended = calculateRecommendedUsers(selectedNode.id);
+                    setRecommendedUsers(recommended);
+                  }
+                  setPanelTab('recommended');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '0.6rem 0.1rem',
+                  border: 'none',
+                  background: panelTab === 'recommended' ? 'white' : '#f9f9f9',
+                  color: panelTab === 'recommended' ? '#1da1f2' : '#666',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  borderBottom: panelTab === 'recommended' ? '2px solid #1da1f2' : 'none',
+                  marginBottom: panelTab === 'recommended' ? '-1px' : '0',
+                  transition: 'all 0.2s'
+                }}
+              >
+                近いユーザー
+              </button>
+            </div>
+
+            {/* Info Tab */}
+            {panelTab === 'info' && (
+              <>
+                {selectedNode.avatar && (
+                  <div
+                    className="avatar-container"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      if (sigmaRef.current && selectedNode.id) {
+                        const graph = sigmaRef.current.getGraph();
+                        const nodeAttrs = graph.getNodeAttributes(selectedNode.id);
+                        if (nodeAttrs) {
+                          const camera = sigmaRef.current.getCamera();
+                          const bbox = sigmaRef.current.getBBox();
+
+                          const width = bbox.x[1] - bbox.x[0];
+                          const height = bbox.y[1] - bbox.y[0];
+                          const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+                          const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+                          camera.animate(
+                            {
+                              x: normalizedX,
+                              y: normalizedY,
+                              ratio: 0.01,
+                            },
+                            { duration: 600 }
+                          );
+                        }
+                      }
+                    }}
+                  >
+                    <img key={selectedNode.label} src={selectedNode.avatar} alt="" className="user-avatar" />
+                  </div>
+                )}
+                <div
+                  className="info-item"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    if (sigmaRef.current && selectedNode.id) {
+                      const graph = sigmaRef.current.getGraph();
+                      const nodeAttrs = graph.getNodeAttributes(selectedNode.id);
+                      if (nodeAttrs) {
+                        const camera = sigmaRef.current.getCamera();
+                        const bbox = sigmaRef.current.getBBox();
+
+                        const width = bbox.x[1] - bbox.x[0];
+                        const height = bbox.y[1] - bbox.y[0];
+                        const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+                        const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+                        camera.animate(
+                          {
+                            x: normalizedX,
+                            y: normalizedY,
+                            ratio: 0.01,
+                          },
+                          { duration: 600 }
+                        );
+                      }
+                    }
+                  }}
+                >
+                  <div className="info-value display-name">{selectedNode.displayName || 'N/A'}</div>
+                </div>
+                <div className="info-item">
+                  <a href={`https://bsky.app/profile/${selectedNode.accountId}`} target="_blank" rel="noopener noreferrer" className="profile-link">
+                    {selectedNode.accountId}
+                  </a>
+                </div>
+                <div className="stats-row">
+                  <span>フォロー: <strong>{selectedNode.followsCount || 0}</strong></span>
+                  <span>フォロワー: <strong>{selectedNode.followersCount || 0}</strong></span>
+                  <span>投稿数: <strong>{selectedNode.postsCount || 0}</strong></span>
+                </div>
+                {selectedNode.hashtags && selectedNode.hashtags.length > 0 && (
+                  <div className="stats-row">
+                    <span style={{ fontSize: '0.65rem', color: '#666' }}>
+                      使用ハッシュタグ: <strong>
+                        {selectedNode.hashtags.map((tag, idx) => (
+                          <div key={idx}>{tag.startsWith('#') ? tag : `#${tag}`}</div>
+                        ))}
+                      </strong>
+                    </span>
+                  </div>
+                )}
+                {graphData?.top_users && (
+                  <div className="stats-row">
+                    {(() => {
+                      const rank = graphData.top_users.findIndex(u => u.id === selectedNode.id);
+                      return rank >= 0 ? (
+                        <span>ネットワーク影響度: <strong>{rank + 1}位</strong></span>
+                      ) : null;
+                    })()}
+                  </div>
+                )}
+              </>
             )}
-            <div className="info-item">
-              <div className="info-value display-name">{selectedNode.displayName || 'N/A'}</div>
-            </div>
-            <div className="info-item">
-              <a href={`https://bsky.app/profile/${selectedNode.accountId}`} target="_blank" rel="noopener noreferrer" className="profile-link">
-                {selectedNode.accountId}
-              </a>
-            </div>
-            <div className="stats-row">
-              <span>フォロー: <strong>{selectedNode.followsCount || 0}</strong></span>
-              <span>フォロワー: <strong>{selectedNode.followersCount || 0}</strong></span>
-              <span>投稿数: <strong>{selectedNode.postsCount || 0}</strong></span>
-            </div>
-            {selectedNode.hashtags && selectedNode.hashtags.length > 0 && (
-              <div className="stats-row">
-                <span style={{ fontSize: '0.65rem', color: '#666' }}>
-                  使用ハッシュタグ: <strong>
-                    {selectedNode.hashtags.map((tag, idx) => (
-                      <div key={idx}>{tag.startsWith('#') ? tag : `#${tag}`}</div>
+
+            {/* Recommended Tab */}
+            {panelTab === 'recommended' && (
+              <>
+                {recommendedUsers.length === 0 ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.7rem' }}>
+                    おすすめユーザーが見つかりません
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                    {recommendedUsers.map(user => (
+                      <div
+                        key={user.id}
+                        style={{
+                          padding: '0.6rem',
+                          backgroundColor: '#f9f9f9',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          display: 'flex',
+                          gap: '0.4rem',
+                          alignItems: 'flex-start'
+                        }}
+                      >
+                        {user.avatar && (
+                          <img
+                            src={user.avatar}
+                            alt=""
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                              flexShrink: 0,
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => {
+                              if (sigmaRef.current) {
+                                const graph = sigmaRef.current.getGraph();
+                                const nodeAttrs = graph.getNodeAttributes(user.id);
+                                if (nodeAttrs) {
+                                  const camera = sigmaRef.current.getCamera();
+                                  const bbox = sigmaRef.current.getBBox();
+
+                                  const width = bbox.x[1] - bbox.x[0];
+                                  const height = bbox.y[1] - bbox.y[0];
+                                  const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+                                  const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+                                  camera.animate(
+                                    {
+                                      x: normalizedX,
+                                      y: normalizedY,
+                                      ratio: 0.01,
+                                    },
+                                    { duration: 600 }
+                                  );
+                                }
+                              }
+                            }}
+                          />
+                        )}
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontWeight: 'bold',
+                              color: '#333',
+                              cursor: 'pointer',
+                              wordBreak: 'break-word'
+                            }}
+                            onClick={() => {
+                              if (sigmaRef.current) {
+                                const graph = sigmaRef.current.getGraph();
+                                const nodeAttrs = graph.getNodeAttributes(user.id);
+                                if (nodeAttrs) {
+                                  const camera = sigmaRef.current.getCamera();
+                                  const bbox = sigmaRef.current.getBBox();
+
+                                  const width = bbox.x[1] - bbox.x[0];
+                                  const height = bbox.y[1] - bbox.y[0];
+                                  const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+                                  const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+                                  camera.animate(
+                                    {
+                                      x: normalizedX,
+                                      y: normalizedY,
+                                      ratio: 0.01,
+                                    },
+                                    { duration: 600 }
+                                  );
+                                }
+                              }
+                            }}
+                          >
+                            {user.displayName}
+                          </div>
+                          <a
+                            href={`https://bsky.app/profile/${user.accountId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: '#1da1f2',
+                              textDecoration: 'none',
+                              fontSize: '0.7rem',
+                              wordBreak: 'break-all'
+                            }}
+                          >
+                            {user.accountId}
+                          </a>
+                        </div>
+                      </div>
                     ))}
-                  </strong>
-                </span>
-              </div>
-            )}
-            {graphData?.top_users && (
-              <div className="stats-row">
-                {(() => {
-                  const rank = graphData.top_users.findIndex(u => u.id === selectedNode.id);
-                  return rank >= 0 ? (
-                    <span>ネットワーク影響度: <strong>{rank + 1}位</strong></span>
-                  ) : null;
-                })()}
-              </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
