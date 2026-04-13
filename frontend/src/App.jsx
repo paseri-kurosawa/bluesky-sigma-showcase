@@ -599,14 +599,16 @@ export default function App() {
                 <p>• 直近で関連するポストをしているユーザーはオレンジ色で表示されます。</p>
 
                 <p><strong>機能</strong></p>
-                <p>• ハッシュタグを選択してグラフを切り替え</p>
+                <p>• カテゴリを選択してグラフを切り替え</p>
+                <p>• ハッシュタグを選択してグラフを絞り込み</p>
                 <p>• 検索ボックスでユーザーを検索</p>
                 <p>• ズームコントロールで拡大・縮小</p>
                 <p>• ノードをクリックするとユーザー情報を表示</p>
 
                 <p><strong>グラフ情報について</strong></p>
-                <p>• ハッシュタグ内での影響力が強いユーザーのランキングが表示されます。</p>
+                <p>• ネットワーク内の影響力が強いユーザーのランキングが表示されます。</p>
                 <p>• ランキングは、フォロー関係をベースにした独自計算式でスコアリングされます。</p>
+                <p>• ハッシュタグを選択すると、ネットワークグラフのユーザーとエッジが絞り込まれます。</p>
                 <p>• 統計情報は、各ネットワークグラフごとに計算されています。</p>
               </div>
               <div className="info-modal-footer">
@@ -863,7 +865,7 @@ export default function App() {
                 {(() => {
                   const rank = graphData.top_users.findIndex(u => u.id === selectedNode.id);
                   return rank >= 0 ? (
-                    <span>ハッシュタグ影響度: <strong>{rank + 1}位</strong></span>
+                    <span>ネットワーク影響度: <strong>{rank + 1}位</strong></span>
                   ) : null;
                 })()}
               </div>
