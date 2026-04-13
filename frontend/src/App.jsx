@@ -11,7 +11,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hashtags, setHashtags] = useState([]);
-  const [allHashtags, setAllHashtags] = useState([]);
   const [selectedHashtag, setSelectedHashtag] = useState(null);
   const [selectedFilterHashtag, setSelectedFilterHashtag] = useState(null);
   const [graphData, setGraphData] = useState(null);
@@ -19,7 +18,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [panelPos, setPanelPos] = useState(() => ({
     x: 10,
-    y: window.innerHeight - 380
+    y: window.innerHeight - 360
   }));
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -198,6 +197,61 @@ export default function App() {
     return () => resizeObserver.disconnect();
   }, []);
 
+  // Apply hashtag filter to graph
+  useEffect(() => {
+    if (!sigmaRef.current || !graphData) return;
+
+    const graph = sigmaRef.current.getGraph();
+
+    if (!selectedFilterHashtag) {
+      // No filter: reset all nodes to original colors based on lastPostAt
+      graph.forEachNode(n => {
+        const nodeAttrs = graph.getNodeAttributes(n);
+        let nodeColor = '#f5d963';
+        if (nodeAttrs.lastPostAt) {
+          const lastPostTime = new Date(nodeAttrs.lastPostAt);
+          const now = new Date();
+          const diffMs = now - lastPostTime;
+          const diffHours = diffMs / (1000 * 60 * 60);
+          if (diffHours <= 2) {
+            nodeColor = '#ff6b4a';
+          }
+        }
+        graph.setNodeAttribute(n, 'color', nodeColor);
+      });
+      // Reset edges
+      graph.forEachEdge(e => {
+        const edgeData = graph.getEdgeAttributes(e);
+        graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+      });
+    } else {
+      // Filter active: grayscale nodes without the selected hashtag
+      graph.forEachNode(n => {
+        const nodeAttrs = graph.getNodeAttributes(n);
+        const nodeHashtags = nodeAttrs.hashtags || [];
+        const hasHashtag = nodeHashtags.includes(selectedFilterHashtag);
+
+        if (hasHashtag) {
+          // Node has the hashtag: show original color (yellow or orange-red)
+          let nodeColor = '#f5d963';
+          if (nodeAttrs.lastPostAt) {
+            const lastPostTime = new Date(nodeAttrs.lastPostAt);
+            const now = new Date();
+            const diffMs = now - lastPostTime;
+            const diffHours = diffMs / (1000 * 60 * 60);
+            if (diffHours <= 2) {
+              nodeColor = '#ff6b4a';
+            }
+          }
+          graph.setNodeAttribute(n, 'color', nodeColor);
+        } else {
+          // Node doesn't have the hashtag: grayscale
+          graph.setNodeAttribute(n, 'color', '#aaa');
+        }
+      });
+    }
+  }, [selectedFilterHashtag, graphData]);
+
   // Fetch available hashtags
   useEffect(() => {
     const fetchHashtags = async () => {
@@ -219,21 +273,6 @@ export default function App() {
     fetchHashtags();
   }, [apiEndpoint]);
 
-  // Fetch all hashtags (unfiltered, for modal filter)
-  useEffect(() => {
-    const fetchAllHashtags = async () => {
-      try {
-        const response = await fetch(`${apiEndpoint}/api/hashtags/all`);
-        if (!response.ok) throw new Error('Failed to fetch all hashtags');
-        const data = await response.json();
-        setAllHashtags(data.hashtags || []);
-      } catch (err) {
-        console.error('Error fetching all hashtags:', err);
-      }
-    };
-
-    fetchAllHashtags();
-  }, [apiEndpoint]);
 
   // Fetch graph data when hashtag changes
   useEffect(() => {
@@ -485,7 +524,7 @@ export default function App() {
           >
             {hashtags.map((tag) => {
               const label = tag.startsWith('unified_')
-                ? `[統合]${tag.replace('unified_', '')}`
+                ? `[統合] ${tag.replace('unified_', '')}`
                 : `#${tag}`;
               return (
                 <option key={tag} value={tag}>
@@ -722,43 +761,31 @@ export default function App() {
                     )}
 
                     <div className="hashtags-list">
-                      {hashtags.length === 0 ? (
+                      {!graphData?.metadata?.hashtags || graphData.metadata.hashtags.length === 0 ? (
                         <div className="no-hashtags-message">
-                          利用可能なハッシュタグがありません
+                          ハッシュタグがありません
                         </div>
                       ) : (
-                        allHashtags
-                          .map(tag => {
-                            const nodeCount = graphData?.nodes?.filter(node => {
-                              const nodeHashtags = node.hashtags || [];
-                              return nodeHashtags.some(t => {
-                                const normalizedTag = t.startsWith('#') ? t.slice(1) : t;
-                                return normalizedTag === tag;
-                              });
-                            }).length || 0;
-                            return { tag, nodeCount };
-                          })
-                          .filter(item => item.nodeCount > 0)
-                          .map(({ tag, nodeCount }) => (
-                            <div
-                              key={tag}
-                              className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''}`}
-                              onClick={() => {
-                                if (selectedFilterHashtag === tag) {
-                                  setSelectedFilterHashtag(null);
-                                } else {
-                                  setSelectedFilterHashtag(tag);
-                                }
-                              }}
-                            >
-                              <span className="hashtag-filter-name">
-                                {tag.startsWith('unified_') ? `[統合]${tag.replace('unified_', '')}` : `#${tag}`}
-                              </span>
-                              <span className="hashtag-filter-count">
-                                {nodeCount} ノード
-                              </span>
-                            </div>
-                          ))
+                        graphData.metadata.hashtags.map(({ tag, nodeCount }) => (
+                          <div
+                            key={tag}
+                            className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''}`}
+                            onClick={() => {
+                              if (selectedFilterHashtag === tag) {
+                                setSelectedFilterHashtag(null);
+                              } else {
+                                setSelectedFilterHashtag(tag);
+                              }
+                            }}
+                          >
+                            <span className="hashtag-filter-name">
+                              #{tag}
+                            </span>
+                            <span className="hashtag-filter-count">
+                              {nodeCount} ノード
+                            </span>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>

@@ -293,6 +293,19 @@ def generate_graph_json(
     density = edge_count / (node_count * (node_count - 1)) if node_count > 1 else 0
     average_degree = (edge_count * 2) / node_count if node_count > 0 else 0
 
+    # Extract and count all unique hashtags from nodes
+    hashtag_counts = {}
+    for node in nodes:
+        for tag in node.get("hashtags", []):
+            if tag not in hashtag_counts:
+                hashtag_counts[tag] = 0
+            hashtag_counts[tag] += 1
+
+    hashtags_list = [
+        {"tag": tag, "nodeCount": count}
+        for tag, count in sorted(hashtag_counts.items())
+    ]
+
     graph_json = {
         "nodes": nodes,
         "edges": edges,
@@ -303,7 +316,8 @@ def generate_graph_json(
             "edgeCount": edge_count,
             "density": round(density, 6),
             "averageDegree": round(average_degree, 2),
-            "generatedAt": get_jst_now().isoformat()
+            "generatedAt": get_jst_now().isoformat(),
+            "hashtags": hashtags_list
         }
     }
 
@@ -597,6 +611,19 @@ def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[
     unified_density = unified_edge_count / (unified_node_count * (unified_node_count - 1)) if unified_node_count > 1 else 0
     unified_average_degree = (unified_edge_count * 2) / unified_node_count if unified_node_count > 0 else 0
 
+    # Extract and count all unique hashtags from nodes
+    unified_hashtag_counts = {}
+    for node in unified_nodes_dict.values():
+        for tag in node.get("hashtags", []):
+            if tag not in unified_hashtag_counts:
+                unified_hashtag_counts[tag] = 0
+            unified_hashtag_counts[tag] += 1
+
+    unified_hashtags_list = [
+        {"tag": tag, "nodeCount": count}
+        for tag, count in sorted(unified_hashtag_counts.items())
+    ]
+
     # Create a temporary graph object to calculate top users
     temp_graph_data = {
         "nodes": list(unified_nodes_dict.values()),
@@ -617,7 +644,8 @@ def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[
             "edgeCount": unified_edge_count,
             "density": round(unified_density, 6),
             "averageDegree": round(unified_average_degree, 2),
-            "source_hashtags": hashtags
+            "source_hashtags": hashtags,
+            "hashtags": unified_hashtags_list
         },
         "top_users": top_users
     }

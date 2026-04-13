@@ -178,59 +178,6 @@ def handle_list_hashtags() -> Dict:
         })
 
 
-def list_all_hashtags() -> list:
-    """
-    List ALL available hashtags in S3 (unfiltered).
-    Used for modal hashtag filter display.
-
-    Returns:
-        List of all hashtag names
-    """
-    try:
-        paginator = s3_client.get_paginator('list_objects_v2')
-        pages = paginator.paginate(
-            Bucket=S3_BUCKET,
-            Prefix=S3_PREFIX,
-            Delimiter='/'
-        )
-
-        hashtags = []
-        for page in pages:
-            if 'CommonPrefixes' in page:
-                for prefix in page['CommonPrefixes']:
-                    hashtag = prefix['Prefix'].replace(S3_PREFIX, '').rstrip('/')
-                    if hashtag:
-                        hashtags.append(hashtag)
-
-        return sorted(hashtags)
-    except Exception as e:
-        print(f"[S3 ERROR] Failed to list all hashtags: {str(e)}")
-        return []
-
-
-def handle_list_all_hashtags() -> Dict:
-    """
-    Handle GET /api/hashtags/all
-    Returns ALL hashtags for modal filter (unfiltered, includes 0-node hashtags)
-
-    Returns:
-        List of all available hashtags
-    """
-    try:
-        hashtags = list_all_hashtags()
-        print(f"[API] Listed {len(hashtags)} all hashtags (unfiltered)")
-        return build_response(200, {
-            "hashtags": hashtags,
-            "count": len(hashtags)
-        })
-    except Exception as e:
-        print(f"[API ERROR] {str(e)}")
-        return build_response(500, {
-            "error": "Internal server error",
-            "message": str(e)
-        })
-
-
 def handle_options() -> Dict:
     """Handle CORS preflight request"""
     return {
@@ -252,7 +199,7 @@ def lambda_handler(event, context):
     Routes:
     - GET /api/graph/latest → Latest graph (first available hashtag)
     - GET /api/graph/{hashtag}/latest → Latest graph for specific hashtag
-    - GET /api/hashtags → List all available hashtags
+    - GET /api/hashtags → List whitelisted hashtags
     - OPTIONS /* → CORS preflight
     """
     print(f"[HANDLER] Event: {json.dumps(event)}")
@@ -271,10 +218,6 @@ def lambda_handler(event, context):
             # Route: /api/graph/latest or /api/graph/{hashtag}/latest
             if 'graph' in path and 'latest' in path:
                 return handle_get_latest(path_parameters)
-
-            # Route: /api/hashtags/all (unfiltered list for modal)
-            elif path == '/api/hashtags/all':
-                return handle_list_all_hashtags()
 
             # Route: /api/hashtags (whitelisted list for header)
             elif 'hashtags' in path:
