@@ -516,17 +516,156 @@ def calculate_top5_users(graph_json: Dict, config: Dict) -> List[Dict]:
     return scores
 
 
+# === Step 7: Merge hashtags into category-unified graph ===
+def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[Dict]:
+    """
+    Merge graphs from all hashtags in a category into a single unified graph.
+    Each node tracks which hashtags it belongs to.
+
+    Args:
+        category: Category name (e.g., "unified_vtuber")
+        hashtags: List of hashtags in this category
+
+    Returns:
+        Unified graph JSON with all nodes and edges, or None if no data found
+    """
+    print(f"[CATEGORY] Merging {len(hashtags)} hashtags for category: {category}")
+
+    unified_nodes_dict = {}  # DID -> node
+    node_hashtags_map = {}  # DID -> list of hashtags
+    unified_edges_set = set()  # (source, target) pairs
+
+    # Load each hashtag's data from S3
+    for hashtag in hashtags:
+        safe_hashtag = hashtag.replace("#", "").replace("/", "_")
+        s3_key_merged = f"{S3_PREFIX}{safe_hashtag}/users_merged.json"
+
+        try:
+            response = s3_client.get_object(Bucket=S3_BUCKET, Key=s3_key_merged)
+            hashtag_data = json.loads(response['Body'].read().decode('utf-8'))
+
+            # Add nodes and track hashtag membership
+            for node in hashtag_data.get('nodes', []):
+                node_id = node['id']
+
+                # Initialize hashtag list if not exists
+                if node_id not in node_hashtags_map:
+                    node_hashtags_map[node_id] = []
+
+                # Add this hashtag to the node's list
+                if hashtag not in node_hashtags_map[node_id]:
+                    node_hashtags_map[node_id].append(hashtag)
+
+                # Store/update node
+                unified_nodes_dict[node_id] = node
+
+            # Add edges (deduplicate by (source, target) pair)
+            for edge in hashtag_data.get('edges', []):
+                edge_key = (edge['source'], edge['target'])
+                unified_edges_set.add(edge_key)
+
+            print(f"[CATEGORY] Loaded {len(hashtag_data.get('nodes', []))} nodes from #{hashtag}")
+
+        except s3_client.exceptions.NoSuchKey:
+            print(f"[CATEGORY] No data found for #{hashtag}, skipping")
+        except Exception as e:
+            print(f"[CATEGORY ERROR] Failed to load #{hashtag}: {str(e)}")
+            continue
+
+    if not unified_nodes_dict:
+        print(f"[CATEGORY] No nodes found for category {category}")
+        return None
+
+    # Add hashtags attribute to each node
+    for node_id, node in unified_nodes_dict.items():
+        node['hashtags'] = node_hashtags_map.get(node_id, [])
+
+    print(f"[CATEGORY] Added hashtag tracking to {len(unified_nodes_dict)} nodes")
+
+    # Reconstruct edges from set
+    unified_edges = [
+        {
+            "source": source,
+            "target": target,
+            "type": "follows"
+        }
+        for source, target in unified_edges_set
+    ]
+
+    unified_node_count = len(unified_nodes_dict)
+    unified_edge_count = len(unified_edges)
+    unified_density = unified_edge_count / (unified_node_count * (unified_node_count - 1)) if unified_node_count > 1 else 0
+    unified_average_degree = (unified_edge_count * 2) / unified_node_count if unified_node_count > 0 else 0
+
+    # Create a temporary graph object to calculate top users
+    temp_graph_data = {
+        "nodes": list(unified_nodes_dict.values()),
+        "edges": unified_edges
+    }
+
+    # Calculate top users for category graph
+    top_users = calculate_top5_users(temp_graph_data, {"top_k": 100})
+
+    unified_graph = {
+        "nodes": list(unified_nodes_dict.values()),
+        "edges": unified_edges,
+        "metadata": {
+            "category": category,
+            "timestamp": get_jst_now().isoformat(),
+            "updated_at": get_jst_now().isoformat(),
+            "nodeCount": unified_node_count,
+            "edgeCount": unified_edge_count,
+            "density": round(unified_density, 6),
+            "averageDegree": round(unified_average_degree, 2),
+            "source_hashtags": hashtags
+        },
+        "top_users": top_users
+    }
+
+    print(f"[CATEGORY] Category graph: {len(unified_nodes_dict)} total nodes, {len(unified_edges)} total edges, {len(top_users)} top users")
+    return unified_graph
+
+
+def save_unified_graph_to_s3(graph: Dict, category: str) -> bool:
+    """
+    Save unified category graph to S3.
+
+    Args:
+        graph: Unified graph dictionary
+        category: Category name (e.g., "unified_vtuber")
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        s3_key = f"{S3_PREFIX}{category}/users_merged.json"
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=json.dumps(graph, ensure_ascii=False),
+            ContentType='application/json'
+        )
+        print(f"[S3] Saved unified category graph to {s3_key}")
+        return True
+    except Exception as e:
+        print(f"[S3 ERROR] Failed to save unified graph for {category}: {str(e)}")
+        return False
+
+
 # === Main Lambda Handler ===
 def lambda_handler(event, context):
     """
     Main Lambda handler for graph crawler.
 
     Fetches hashtag posts, extracts users, builds follow graph, saves to S3.
+    After processing all hashtags in a category, merges them into a unified graph.
     """
     print("[HANDLER] Starting graph crawler...")
 
-    # Get hashtags from event payload (from scheduler)
+    # Get category and hashtags from event payload (from scheduler)
+    category = event.get('category')
     hashtags = event.get('hashtags', [])
+    print(f"[HANDLER] Processing category: {category}")
     print(f"[HANDLER] Processing hashtags: {hashtags}")
 
     try:
@@ -607,12 +746,21 @@ def lambda_handler(event, context):
             # Step 5: Save to S3
             save_graph_to_s3(merged_graph, hashtag)
 
+        # === Step 6: Merge all hashtags in this category into unified graph ===
+        if category and hashtags:
+            print(f"[HANDLER] Merging hashtags for category: {category}")
+            unified_graph = merge_hashtags_for_category(category, hashtags)
+            if unified_graph:
+                save_unified_graph_to_s3(unified_graph, category)
+                print(f"[HANDLER] Successfully saved unified graph for {category}")
+
         print("[HANDLER] Graph crawler completed successfully")
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "message": "Graph crawler completed",
-                "hashtags_processed": len(hashtags)
+                "hashtags_processed": len(hashtags),
+                "category": category
             })
         }
 

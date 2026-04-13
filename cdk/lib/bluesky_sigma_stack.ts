@@ -81,6 +81,29 @@ export class BlueskySigmaStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
+    // === Lambda: Scheduler ===
+    const schedulerLambda = new lambda.Function(this, 'SchedulerLambda', {
+      functionName: 'bluesky-sigma-scheduler',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.lambda_handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/handlers/scheduler')),
+      role: lambdaExecutionRole,
+      timeout: cdk.Duration.seconds(60),
+      memorySize: 256,
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    // Permissions: Allow Scheduler to invoke Graph Crawler
+    schedulerLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['lambda:InvokeFunction'],
+        resources: [
+          `arn:aws:lambda:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:function:bluesky-sigma-graph-crawler`,
+        ],
+      })
+    );
+
     // === Lambda: API Endpoint ===
     const graphApiLambda = new lambda.Function(this, 'GraphApiLambda', {
       functionName: 'bluesky-sigma-graph-api',
@@ -136,7 +159,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       description: 'Hourly graph crawler execution at every hour',
     });
 
-    crawlerRule.addTarget(new targets.LambdaFunction(graphCrawlerLambda));
+    crawlerRule.addTarget(new targets.LambdaFunction(schedulerLambda));
 
     // === CloudFront Distribution (Frontend) ===
     const oai = new cloudfront.OriginAccessIdentity(this, 'FrontendOAI', {
@@ -182,6 +205,11 @@ export class BlueskySigmaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CloudFrontDistributionDomain', {
       value: distribution.distributionDomainName,
       description: 'CloudFront distribution domain',
+    });
+
+    new cdk.CfnOutput(this, 'SchedulerLambdaName', {
+      value: schedulerLambda.functionName,
+      description: 'Scheduler Lambda function name',
     });
 
     new cdk.CfnOutput(this, 'GraphCrawlerLambdaName', {

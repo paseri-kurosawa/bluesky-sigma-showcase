@@ -11,6 +11,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hashtags, setHashtags] = useState([]);
+  const [allHashtags, setAllHashtags] = useState([]);
   const [selectedHashtag, setSelectedHashtag] = useState(null);
   const [selectedFilterHashtag, setSelectedFilterHashtag] = useState(null);
   const [graphData, setGraphData] = useState(null);
@@ -216,6 +217,22 @@ export default function App() {
     };
 
     fetchHashtags();
+  }, [apiEndpoint]);
+
+  // Fetch all hashtags (unfiltered, for modal filter)
+  useEffect(() => {
+    const fetchAllHashtags = async () => {
+      try {
+        const response = await fetch(`${apiEndpoint}/api/hashtags/all`);
+        if (!response.ok) throw new Error('Failed to fetch all hashtags');
+        const data = await response.json();
+        setAllHashtags(data.hashtags || []);
+      } catch (err) {
+        console.error('Error fetching all hashtags:', err);
+      }
+    };
+
+    fetchAllHashtags();
   }, [apiEndpoint]);
 
   // Fetch graph data when hashtag changes
@@ -466,11 +483,16 @@ export default function App() {
             disabled={loading}
             className="header-select"
           >
-            {hashtags.map((tag) => (
-              <option key={tag} value={tag}>
-                #{tag}
-              </option>
-            ))}
+            {hashtags.map((tag) => {
+              const label = tag.startsWith('unified_')
+                ? `[統合]${tag.replace('unified_', '')}`
+                : `#${tag}`;
+              return (
+                <option key={tag} value={tag}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
           {graphData && (
             <form onSubmit={handleSearch} className="search-form">
@@ -705,7 +727,19 @@ export default function App() {
                           利用可能なハッシュタグがありません
                         </div>
                       ) : (
-                        hashtags.map(tag => (
+                        allHashtags
+                          .map(tag => {
+                            const nodeCount = graphData?.nodes?.filter(node => {
+                              const nodeHashtags = node.hashtags || [];
+                              return nodeHashtags.some(t => {
+                                const normalizedTag = t.startsWith('#') ? t.slice(1) : t;
+                                return normalizedTag === tag;
+                              });
+                            }).length || 0;
+                            return { tag, nodeCount };
+                          })
+                          .filter(item => item.nodeCount > 0)
+                          .map(({ tag, nodeCount }) => (
                             <div
                               key={tag}
                               className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''}`}
@@ -717,15 +751,11 @@ export default function App() {
                                 }
                               }}
                             >
-                              <span className="hashtag-filter-name">#{tag}</span>
+                              <span className="hashtag-filter-name">
+                                {tag.startsWith('unified_') ? `[統合]${tag.replace('unified_', '')}` : `#${tag}`}
+                              </span>
                               <span className="hashtag-filter-count">
-                                {graphData?.nodes?.filter(node => {
-                                  const nodeHashtags = node.hashtags || [];
-                                  return nodeHashtags.some(t => {
-                                    const normalizedTag = t.startsWith('#') ? t.slice(1) : t;
-                                    return normalizedTag === tag;
-                                  });
-                                }).length || 0} ノード
+                                {nodeCount} ノード
                               </span>
                             </div>
                           ))

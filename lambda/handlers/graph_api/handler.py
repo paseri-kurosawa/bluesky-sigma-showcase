@@ -15,7 +15,8 @@ JST = timezone(timedelta(hours=9))
 S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase-878311109818')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'sigma-graph/')
 
-# Allowed hashtags (whitelist)
+# Allowed hashtags (whitelist) - individual hashtags only
+# Category-unified graphs (unified_*) are allowed dynamically
 ALLOWED_HASHTAGS = ["おはようvtuber", "青空ごはん部", "イラスト"]
 
 
@@ -63,7 +64,8 @@ def get_graph_from_s3(s3_key: str) -> Optional[Dict]:
 
 def list_hashtags() -> list:
     """
-    List all available hashtags in S3.
+    List all available hashtags in S3, filtered by whitelist.
+    Returns only hashtags in ALLOWED_HASHTAGS or unified_* categories.
 
     Returns:
         List of hashtag names
@@ -83,7 +85,9 @@ def list_hashtags() -> list:
                     # Extract hashtag from prefix (e.g., "sigma-graph/おはようvtuber/" -> "おはようvtuber")
                     hashtag = prefix['Prefix'].replace(S3_PREFIX, '').rstrip('/')
                     if hashtag:
-                        hashtags.append(hashtag)
+                        # Filter by whitelist: allowed individual hashtags or unified_* categories
+                        if hashtag in ALLOWED_HASHTAGS or hashtag.startswith('unified_'):
+                            hashtags.append(hashtag)
 
         return sorted(hashtags)
     except Exception as e:
@@ -120,8 +124,8 @@ def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
             import urllib.parse
             hashtag = urllib.parse.unquote(hashtag)
 
-            # Validate hashtag (whitelist)
-            if hashtag not in ALLOWED_HASHTAGS:
+            # Validate hashtag (whitelist) - allow individual hashtags or unified_* categories
+            if hashtag not in ALLOWED_HASHTAGS and not hashtag.startswith('unified_'):
                 return build_response(404, {
                     "error": "Hashtag not found",
                     "hashtag": hashtag
@@ -154,13 +158,67 @@ def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
 def handle_list_hashtags() -> Dict:
     """
     Handle GET /api/hashtags or /api/graph/list
+    Returns whitelisted hashtags only (for header dropdown)
 
     Returns:
-        List of available hashtags
+        List of available whitelisted hashtags
     """
     try:
         hashtags = list_hashtags()
-        print(f"[API] Listed {len(hashtags)} hashtags")
+        print(f"[API] Listed {len(hashtags)} whitelisted hashtags")
+        return build_response(200, {
+            "hashtags": hashtags,
+            "count": len(hashtags)
+        })
+    except Exception as e:
+        print(f"[API ERROR] {str(e)}")
+        return build_response(500, {
+            "error": "Internal server error",
+            "message": str(e)
+        })
+
+
+def list_all_hashtags() -> list:
+    """
+    List ALL available hashtags in S3 (unfiltered).
+    Used for modal hashtag filter display.
+
+    Returns:
+        List of all hashtag names
+    """
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(
+            Bucket=S3_BUCKET,
+            Prefix=S3_PREFIX,
+            Delimiter='/'
+        )
+
+        hashtags = []
+        for page in pages:
+            if 'CommonPrefixes' in page:
+                for prefix in page['CommonPrefixes']:
+                    hashtag = prefix['Prefix'].replace(S3_PREFIX, '').rstrip('/')
+                    if hashtag:
+                        hashtags.append(hashtag)
+
+        return sorted(hashtags)
+    except Exception as e:
+        print(f"[S3 ERROR] Failed to list all hashtags: {str(e)}")
+        return []
+
+
+def handle_list_all_hashtags() -> Dict:
+    """
+    Handle GET /api/hashtags/all
+    Returns ALL hashtags for modal filter (unfiltered, includes 0-node hashtags)
+
+    Returns:
+        List of all available hashtags
+    """
+    try:
+        hashtags = list_all_hashtags()
+        print(f"[API] Listed {len(hashtags)} all hashtags (unfiltered)")
         return build_response(200, {
             "hashtags": hashtags,
             "count": len(hashtags)
@@ -214,7 +272,11 @@ def lambda_handler(event, context):
             if 'graph' in path and 'latest' in path:
                 return handle_get_latest(path_parameters)
 
-            # Route: /api/hashtags
+            # Route: /api/hashtags/all (unfiltered list for modal)
+            elif path == '/api/hashtags/all':
+                return handle_list_all_hashtags()
+
+            # Route: /api/hashtags (whitelisted list for header)
             elif 'hashtags' in path:
                 return handle_list_hashtags()
 
