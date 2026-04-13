@@ -205,13 +205,6 @@ export default function App() {
         if (!response.ok) throw new Error('Failed to fetch hashtags');
         const data = await response.json();
         let tags = data.hashtags || [];
-
-        // Move "統合" to the end if it exists
-        tags = tags.filter(tag => tag !== '統合');
-        if (data.hashtags?.includes('統合')) {
-          tags.push('統合');
-        }
-
         setHashtags(tags);
         if (tags.length > 0) {
           setSelectedHashtag(tags[0]);
@@ -454,90 +447,6 @@ export default function App() {
     };
   }, [graphData]);
 
-  // Handle hashtag filter highlighting
-  useEffect(() => {
-    if (!sigmaRef.current || !graphData || selectedHashtag !== '統合') return;
-
-    const graph = sigmaRef.current.getGraph();
-
-    if (!selectedFilterHashtag) {
-      // フィルター解除: 元の色に戻す
-      graph.forEachNode(n => {
-        const nodeAttrs = graph.getNodeAttributes(n);
-        // 直近投稿はオレンジ、それ以外は黄色
-        let nodeColor = '#f5d963';
-        if (nodeAttrs.lastPostAt) {
-          const lastPostTime = new Date(nodeAttrs.lastPostAt);
-          const now = new Date();
-          const diffHours = (now - lastPostTime) / (1000 * 60 * 60);
-          if (diffHours <= 2) {
-            nodeColor = '#ff6b4a';
-          }
-        }
-        graph.setNodeAttribute(n, 'color', nodeColor);
-      });
-
-      graph.forEachEdge(e => {
-        const edgeData = graph.getEdgeAttributes(e);
-        graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
-      });
-
-      return;
-    }
-
-    // フィルター適用: 全ノード・エッジをリセットしてから、選択ハッシュタグに属さないノードをグレーアウト
-    // Step 1: リセット
-    graph.forEachNode(n => {
-      const nodeAttrs = graph.getNodeAttributes(n);
-      let nodeColor = '#f5d963';
-      if (nodeAttrs.lastPostAt) {
-        const lastPostTime = new Date(nodeAttrs.lastPostAt);
-        const now = new Date();
-        const diffHours = (now - lastPostTime) / (1000 * 60 * 60);
-        if (diffHours <= 2) {
-          nodeColor = '#ff6b4a';
-        }
-      }
-      graph.setNodeAttribute(n, 'color', nodeColor);
-    });
-
-    graph.forEachEdge(e => {
-      const edgeData = graph.getEdgeAttributes(e);
-      graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
-    });
-
-    // Step 2: フィルター適用
-    const filteredNodes = new Set();
-    graph.forEachNode(n => {
-      const nodeAttrs = graph.getNodeAttributes(n);
-      const nodeHashtags = nodeAttrs.hashtags || [];
-
-      // '#' の有無に対応した比較
-      const hasHashtag = nodeHashtags.some(tag => {
-        const normalizedTag = tag.startsWith('#') ? tag.slice(1) : tag;
-        const normalizedFilter = selectedFilterHashtag.startsWith('#')
-          ? selectedFilterHashtag.slice(1)
-          : selectedFilterHashtag;
-        return normalizedTag === normalizedFilter;
-      });
-
-      if (hasHashtag) {
-        filteredNodes.add(n);
-      } else {
-        graph.setNodeAttribute(n, 'color', '#aaa'); // Gray
-      }
-    });
-
-    // Step 3: エッジのハイライト
-    graph.forEachEdge((edge, attributes, source, target) => {
-      if (filteredNodes.has(source) && filteredNodes.has(target)) {
-        graph.setEdgeAttribute(edge, 'color', attributes.mutual ? '#b0b0b0' : '#505050');
-      } else {
-        graph.setEdgeAttribute(edge, 'color', '#222222');
-      }
-    });
-  }, [selectedFilterHashtag, graphData, selectedHashtag]);
-
   return (
     <div className="app-container">
       <div className="header" ref={headerRef}>
@@ -559,7 +468,7 @@ export default function App() {
           >
             {hashtags.map((tag) => (
               <option key={tag} value={tag}>
-                {tag === '統合' ? tag : `#${tag}`}
+                #{tag}
               </option>
             ))}
           </select>
@@ -647,7 +556,7 @@ export default function App() {
           </>
         )}
 
-        {showStats && graphData?.top_users && (
+        {showStats && graphData && (
           <>
             <div className="modal-overlay" onClick={() => setShowStats(false)} />
             <div className="stats-modal" style={{ top: `${headerHeight}px`, maxHeight: `calc(100vh - ${headerHeight}px)` }}>
@@ -659,14 +568,12 @@ export default function App() {
                   >
                     ランキング
                   </button>
-                  {selectedHashtag === '統合' && (
-                    <button
-                      className={`stats-tab ${statsTab === 'hashtags' ? 'active' : ''}`}
-                      onClick={() => setStatsTab('hashtags')}
-                    >
-                      ハッシュタグ
-                    </button>
-                  )}
+                  <button
+                    className={`stats-tab ${statsTab === 'hashtags' ? 'active' : ''}`}
+                    onClick={() => setStatsTab('hashtags')}
+                  >
+                    ハッシュタグ
+                  </button>
                   <button
                     className={`stats-tab ${statsTab === 'stats' ? 'active' : ''}`}
                     onClick={() => setStatsTab('stats')}
@@ -684,92 +591,96 @@ export default function App() {
               <div className="stats-modal-content">
                 {statsTab === 'ranking' && (
                   <>
-                    {graphData.top_users.slice(0, 100).map((user, index) => (
-                      <div
-                        key={user.id}
-                        className={`ranking-card ${selectedNode?.id === user.id ? 'selected' : ''}`}
-                        onClick={() => {
-                          if (sigmaRef.current) {
-                            const graph = sigmaRef.current.getGraph();
-                            const nodeAttrs = graph.getNodeAttributes(user.id);
-                            if (nodeAttrs) {
-                              // Animate camera to node position
-                              const camera = sigmaRef.current.getCamera();
-                              const bbox = sigmaRef.current.getBBox();
+                    {graphData.top_users && graphData.top_users.length > 0 ? (
+                      graphData.top_users.slice(0, 100).map((user, index) => (
+                        <div
+                          key={user.id}
+                          className={`ranking-card ${selectedNode?.id === user.id ? 'selected' : ''}`}
+                          onClick={() => {
+                            if (sigmaRef.current) {
+                              const graph = sigmaRef.current.getGraph();
+                              const nodeAttrs = graph.getNodeAttributes(user.id);
+                              if (nodeAttrs) {
+                                // Animate camera to node position
+                                const camera = sigmaRef.current.getCamera();
+                                const bbox = sigmaRef.current.getBBox();
 
-                              const width = bbox.x[1] - bbox.x[0];
-                              const height = bbox.y[1] - bbox.y[0];
-                              const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
-                              const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+                                const width = bbox.x[1] - bbox.x[0];
+                                const height = bbox.y[1] - bbox.y[0];
+                                const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+                                const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
 
-                              camera.animate(
-                                {
-                                  x: normalizedX,
-                                  y: normalizedY,
-                                  ratio: 0.01,
-                                },
-                                { duration: 600 }
-                              );
+                                camera.animate(
+                                  {
+                                    x: normalizedX,
+                                    y: normalizedY,
+                                    ratio: 0.01,
+                                  },
+                                  { duration: 600 }
+                                );
 
-                              // Reset all nodes and edges to original colors
-                              graph.forEachNode(n => {
-                                graph.setNodeAttribute(n, 'color', '#f5d963');
-                              });
-                              graph.forEachEdge(e => {
-                                const edgeData = graph.getEdgeAttributes(e);
-                                graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
-                              });
+                                // Reset all nodes and edges to original colors
+                                graph.forEachNode(n => {
+                                  graph.setNodeAttribute(n, 'color', '#f5d963');
+                                });
+                                graph.forEachEdge(e => {
+                                  const edgeData = graph.getEdgeAttributes(e);
+                                  graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+                                });
 
-                              // Apply highlight for selected node
-                              nodeAttrs.id = user.id;
-                              setSelectedNode(nodeAttrs);
+                                // Apply highlight for selected node
+                                nodeAttrs.id = user.id;
+                                setSelectedNode(nodeAttrs);
 
-                              const neighbors = graph.neighbors(user.id);
-                              const selectedNodeSet = new Set([user.id, ...neighbors]);
+                                const neighbors = graph.neighbors(user.id);
+                                const selectedNodeSet = new Set([user.id, ...neighbors]);
 
-                              // Set selected node to cyan
-                              graph.setNodeAttribute(user.id, 'color', '#26C6DA');
+                                // Set selected node to cyan
+                                graph.setNodeAttribute(user.id, 'color', '#26C6DA');
 
-                              // Grayscale unrelated nodes
-                              graph.forEachNode(n => {
-                                if (!selectedNodeSet.has(n)) {
-                                  graph.setNodeAttribute(n, 'color', '#aaa');
-                                }
-                              });
+                                // Grayscale unrelated nodes
+                                graph.forEachNode(n => {
+                                  if (!selectedNodeSet.has(n)) {
+                                    graph.setNodeAttribute(n, 'color', '#aaa');
+                                  }
+                                });
 
-                              // Collect and highlight connected edges
-                              const connectedEdges = new Set();
-                              graph.forEachOutboundEdge(user.id, e => {
-                                connectedEdges.add(e);
-                              });
-                              graph.forEachInboundEdge(user.id, e => {
-                                connectedEdges.add(e);
-                              });
+                                // Collect and highlight connected edges
+                                const connectedEdges = new Set();
+                                graph.forEachOutboundEdge(user.id, e => {
+                                  connectedEdges.add(e);
+                                });
+                                graph.forEachInboundEdge(user.id, e => {
+                                  connectedEdges.add(e);
+                                });
 
-                              graph.forEachEdge(e => {
-                                if (!connectedEdges.has(e)) {
-                                  graph.setEdgeAttribute(e, 'color', '#222222');
-                                }
-                              });
+                                graph.forEachEdge(e => {
+                                  if (!connectedEdges.has(e)) {
+                                    graph.setEdgeAttribute(e, 'color', '#222222');
+                                  }
+                                });
+                              }
                             }
-                          }
-                        }}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <div className="ranking-badge">{index + 1}位</div>
-                        <div className="ranking-card-header">
-                          {user.avatar && (
-                            <img src={user.avatar} alt="" className="ranking-card-avatar" />
-                          )}
-                          <div className="ranking-card-title">{user.displayName || 'N/A'}</div>
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <div className="ranking-badge">{index + 1}位</div>
+                          <div className="ranking-card-header">
+                            {user.avatar && (
+                              <img src={user.avatar} alt="" className="ranking-card-avatar" />
+                            )}
+                            <div className="ranking-card-title">{user.displayName || 'N/A'}</div>
+                          </div>
+                          <div className="ranking-card-stats">
+                            <span>スコア: <strong>{user.score}</strong></span>
+                            <span>エッジ: <strong>{user.stats.one_way_followers + user.stats.mutual_followers}</strong></span>
+                            <span>投稿: <strong>{user.stats.posts_count}</strong></span>
+                          </div>
                         </div>
-                        <div className="ranking-card-stats">
-                          <span>スコア: <strong>{user.score}</strong></span>
-                          <span>エッジ: <strong>{user.stats.one_way_followers + user.stats.mutual_followers}</strong></span>
-                          <span>投稿: <strong>{user.stats.posts_count}</strong></span>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      <div className="no-hashtags-message">ランキングデータがありません</div>
+                    )}
                   </>
                 )}
                 {statsTab === 'hashtags' && (
@@ -789,14 +700,12 @@ export default function App() {
                     )}
 
                     <div className="hashtags-list">
-                      {hashtags.filter(tag => tag !== '統合').length === 0 ? (
+                      {hashtags.length === 0 ? (
                         <div className="no-hashtags-message">
                           利用可能なハッシュタグがありません
                         </div>
                       ) : (
-                        hashtags
-                          .filter(tag => tag !== '統合')
-                          .map(tag => (
+                        hashtags.map(tag => (
                             <div
                               key={tag}
                               className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''}`}
@@ -828,23 +737,23 @@ export default function App() {
                   <div className="stats-info-container">
                     <div className="stats-info-item">
                       <div className="stats-info-label">ノード数</div>
-                      <div className="stats-info-value">{graphData.metadata.nodeCount}</div>
+                      <div className="stats-info-value">{graphData.metadata?.nodeCount || 'N/A'}</div>
                     </div>
                     <div className="stats-info-item">
                       <div className="stats-info-label">エッジ数</div>
-                      <div className="stats-info-value">{graphData.metadata.edgeCount}</div>
+                      <div className="stats-info-value">{graphData.metadata?.edgeCount || 'N/A'}</div>
                     </div>
                     <div className="stats-info-item">
                       <div className="stats-info-label">ネットワーク密度</div>
-                      <div className="stats-info-value">{(graphData.metadata.density * 100).toFixed(4)}%</div>
+                      <div className="stats-info-value">{graphData.metadata?.density ? (graphData.metadata.density * 100).toFixed(4) + '%' : 'N/A'}</div>
                     </div>
                     <div className="stats-info-item">
                       <div className="stats-info-label">平均次数</div>
-                      <div className="stats-info-value">{graphData.metadata.averageDegree}</div>
+                      <div className="stats-info-value">{graphData.metadata?.averageDegree || 'N/A'}</div>
                     </div>
                     <div className="stats-info-item">
                       <div className="stats-info-label">最終更新</div>
-                      <div className="stats-info-value">{new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP')} {new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP')}</div>
+                      <div className="stats-info-value">{graphData.metadata?.timestamp ? new Date(graphData.metadata.timestamp).toLocaleDateString('ja-JP') + ' ' + new Date(graphData.metadata.timestamp).toLocaleTimeString('ja-JP') : 'N/A'}</div>
                     </div>
                   </div>
                 )}

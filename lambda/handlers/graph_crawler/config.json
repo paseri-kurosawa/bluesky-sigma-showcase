@@ -1,9 +1,4 @@
 {
-  "target_hashtags": [
-    "おはようvtuber",
-    "青空ごはん部",
-    "イラスト"
-  ],
   "crawler": {
     "users_per_hashtag": 500,
     "rate_limit_per_second": 5,
