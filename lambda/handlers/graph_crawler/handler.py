@@ -548,6 +548,7 @@ def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[
     unified_nodes_dict = {}  # DID -> node
     node_hashtags_map = {}  # DID -> list of hashtags
     unified_edges_set = set()  # (source, target) pairs
+    edge_mutual_map = {}  # (source, target) -> mutual flag
 
     # Load each hashtag's data from S3
     for hashtag in hashtags:
@@ -573,10 +574,12 @@ def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[
                 # Store/update node
                 unified_nodes_dict[node_id] = node
 
-            # Add edges (deduplicate by (source, target) pair)
+            # Add edges (deduplicate by (source, target) pair, preserve mutual flag)
             for edge in hashtag_data.get('edges', []):
                 edge_key = (edge['source'], edge['target'])
                 unified_edges_set.add(edge_key)
+                # Preserve mutual flag from this edge
+                edge_mutual_map[edge_key] = edge.get('mutual', False)
 
             print(f"[CATEGORY] Loaded {len(hashtag_data.get('nodes', []))} nodes from #{hashtag}")
 
@@ -596,12 +599,13 @@ def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[
 
     print(f"[CATEGORY] Added hashtag tracking to {len(unified_nodes_dict)} nodes")
 
-    # Reconstruct edges from set
+    # Reconstruct edges from set with mutual flags preserved
     unified_edges = [
         {
             "source": source,
             "target": target,
-            "type": "follows"
+            "type": "follows",
+            "mutual": edge_mutual_map.get((source, target), False)
         }
         for source, target in unified_edges_set
     ]
