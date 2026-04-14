@@ -48,7 +48,7 @@ body {
 }
 
 .header h1 {
-  font-size: 1.0rem;
+  font-size: 1.0em;
   margin: 0;
   font-weight: 600;
   display: flex;
@@ -394,7 +394,7 @@ body {
 }
 
 .stats-btn {
-  padding: 0.4rem 1rem;
+  padding: 0.3rem 0.8rem;
   border: 1px solid #ff6b4a;
   border-radius: 4px;
   background: #ff6b4a;

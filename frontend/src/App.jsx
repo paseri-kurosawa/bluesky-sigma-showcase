@@ -622,7 +622,7 @@ export default function App() {
             <option value="">グラフ選択</option>
             {hashtags.map((tag) => {
               const label = tag.startsWith('unified_')
-                ? `[統合] ${tag.replace('unified_', '')}`
+                ? `${tag.replace('unified_', '')} Network`
                 : `#${tag}`;
               return (
                 <option key={tag} value={tag}>
