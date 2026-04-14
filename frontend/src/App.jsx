@@ -1416,6 +1416,33 @@ export default function App() {
                       >
                         コピー
                       </button>
+                      <button
+                        onClick={() => {
+                          const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                          const params = new URLSearchParams({
+                            displayName: selectedNode.displayName,
+                            avatarUrl: selectedNode.avatar || '',
+                            rank: rank,
+                            graphName: graphName,
+                            date: dateStr
+                          });
+                          const imageUrl = `${apiEndpoint}/api/user/${selectedNode.accountId}/share-image?${params.toString()}`;
+                          window.open(imageUrl, '_blank');
+                        }}
+                        style={{
+                          padding: '0.3rem 0.5rem',
+                          background: '#1da1f2',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '2px',
+                          fontSize: '0.6rem',
+                          fontWeight: 400,
+                          cursor: 'pointer',
+                          marginTop: '0.4rem'
+                        }}
+                      >
+                        画像生成
+                      </button>
                     </div>
                   );
                 })()}
