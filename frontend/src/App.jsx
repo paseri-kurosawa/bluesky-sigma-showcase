@@ -31,9 +31,89 @@ export default function App() {
   const [topPost, setTopPost] = useState(null);
   const [topPostLoading, setTopPostLoading] = useState(false);
   const [tabCooldown, setTabCooldown] = useState(0);
+  const [autoSelectHandle, setAutoSelectHandle] = useState(null);
 
   const apiEndpoint =
     import.meta.env.VITE_API_ENDPOINT || 'http://localhost:3001';
+
+  // Initialize from URL parameters on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const network = params.get('network');
+    const handle = params.get('handle');
+
+    if (network) {
+      setSelectedHashtag(network);
+    }
+
+    if (handle) {
+      setAutoSelectHandle(handle);
+    }
+  }, []); // Run only on mount
+
+  // Helper: Select node with highlight and camera animation
+  // Accepts either (nodeId, graph, sigma) or just (nodeId) for external use with sigmaRef
+  const selectNodeAndHighlight = (nodeId, graph, sigma) => {
+    const g = graph || sigmaRef.current.getGraph();
+    const s = sigma || sigmaRef.current;
+
+    const nodeAttrs = g.getNodeAttributes(nodeId);
+    nodeAttrs.id = nodeId;
+    setSelectedNode(nodeAttrs);
+
+    // Animate camera to node
+    const camera = s.getCamera();
+    const bbox = s.getBBox();
+    const width = bbox.x[1] - bbox.x[0];
+    const height = bbox.y[1] - bbox.y[0];
+    const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
+    const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
+
+    camera.animate(
+      {
+        x: normalizedX,
+        y: normalizedY,
+        ratio: 0.01,
+      },
+      { duration: 600 }
+    );
+
+    // Reset all colors
+    g.forEachNode(n => {
+      g.setNodeAttribute(n, 'color', '#f5d963');
+    });
+    g.forEachEdge(e => {
+      const edgeData = g.getEdgeAttributes(e);
+      g.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
+    });
+
+    // Highlight selected node and neighbors
+    const neighbors = g.neighbors(nodeId);
+    const selectedNodeSet = new Set([nodeId, ...neighbors]);
+
+    g.forEachNode(n => {
+      if (n === nodeId) {
+        g.setNodeAttribute(n, 'color', '#26C6DA');
+      } else if (!selectedNodeSet.has(n)) {
+        g.setNodeAttribute(n, 'color', '#aaa');
+      }
+    });
+
+    // Highlight connected edges
+    const connectedEdges = new Set();
+    g.forEachOutboundEdge(nodeId, e => {
+      connectedEdges.add(e);
+    });
+    g.forEachInboundEdge(nodeId, e => {
+      connectedEdges.add(e);
+    });
+
+    g.forEachEdge(e => {
+      if (!connectedEdges.has(e)) {
+        g.setEdgeAttribute(e, 'color', '#222222');
+      }
+    });
+  };
 
   // Calculate recommended users (2-hop connections)
   const calculateRecommendedUsers = (userId) => {
@@ -400,6 +480,7 @@ export default function App() {
     fetchGraphData();
   }, [selectedHashtag, apiEndpoint]);
 
+
   // Initialize and update Sigma visualization
   useEffect(() => {
     if (!graphData || !containerRef.current) return;
@@ -499,65 +580,7 @@ export default function App() {
 
       // Node click handler
       sigma.on('clickNode', ({ node }) => {
-        // Animate camera to node position
-        const nodeAttrs = graph.getNodeAttributes(node);
-        const camera = sigma.getCamera();
-        const bbox = sigma.getBBox();
-
-        const width = bbox.x[1] - bbox.x[0];
-        const height = bbox.y[1] - bbox.y[0];
-        const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
-        const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
-
-        camera.animate(
-          {
-            x: normalizedX,
-            y: normalizedY,
-            ratio: 0.01,
-          },
-          { duration: 600 }
-        );
-
-        // Reset all nodes and edges to original colors first
-        graph.forEachNode(n => {
-          graph.setNodeAttribute(n, 'color', '#f5d963');
-        });
-        graph.forEachEdge(e => {
-          const edgeData = graph.getEdgeAttributes(e);
-          graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
-        });
-
-        // Now apply highlight for selected node
-        nodeAttrs.id = node; // Include node ID for ranking lookup
-        setSelectedNode(nodeAttrs);
-
-        const neighbors = graph.neighbors(node);
-        const selectedNodeSet = new Set([node, ...neighbors]);
-
-        // Set selected node to cyan, grayscale unrelated nodes
-        graph.forEachNode(n => {
-          if (n === node) {
-            graph.setNodeAttribute(n, 'color', '#26C6DA'); // Cyan for selected node
-          } else if (!selectedNodeSet.has(n)) {
-            graph.setNodeAttribute(n, 'color', '#aaa');
-          }
-        });
-
-        // Collect connected edges
-        const connectedEdges = new Set();
-        graph.forEachOutboundEdge(node, e => {
-          connectedEdges.add(e);
-        });
-        graph.forEachInboundEdge(node, e => {
-          connectedEdges.add(e);
-        });
-
-        // Make unrelated edges very dark (nearly black)
-        graph.forEachEdge(e => {
-          if (!connectedEdges.has(e)) {
-            graph.setEdgeAttribute(e, 'color', '#222222');
-          }
-        });
+        selectNodeAndHighlight(node, graph, sigma);
       });
 
       // Background click handler
@@ -588,6 +611,15 @@ export default function App() {
           graph.setEdgeAttribute(e, 'color', edgeData.mutual ? '#b0b0b0' : '#505050');
         });
       });
+
+      // Auto-select node from URL parameter if handle is provided
+      if (autoSelectHandle) {
+        const foundNode = graphData.nodes.find(n => n.label === autoSelectHandle);
+        if (foundNode) {
+          selectNodeAndHighlight(foundNode.id, graph, sigma);
+          setAutoSelectHandle(null);
+        }
+      }
     } catch (err) {
       console.error('Error initializing Sigma:', err);
       setError('Failed to render graph');
@@ -1038,27 +1070,8 @@ export default function App() {
                     className="avatar-container"
                     style={{ cursor: 'pointer' }}
                     onClick={() => {
-                      if (sigmaRef.current && selectedNode.id) {
-                        const graph = sigmaRef.current.getGraph();
-                        const nodeAttrs = graph.getNodeAttributes(selectedNode.id);
-                        if (nodeAttrs) {
-                          const camera = sigmaRef.current.getCamera();
-                          const bbox = sigmaRef.current.getBBox();
-
-                          const width = bbox.x[1] - bbox.x[0];
-                          const height = bbox.y[1] - bbox.y[0];
-                          const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
-                          const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
-
-                          camera.animate(
-                            {
-                              x: normalizedX,
-                              y: normalizedY,
-                              ratio: 0.01,
-                            },
-                            { duration: 600 }
-                          );
-                        }
+                      if (selectedNode.id) {
+                        selectNodeAndHighlight(selectedNode.id);
                       }
                     }}
                   >
@@ -1096,7 +1109,7 @@ export default function App() {
                   <div className="info-value display-name">{selectedNode.displayName || 'N/A'}</div>
                 </div>
                 <div className="info-item">
-                  <a href={`https://bsky.app/profile/${selectedNode.accountId}`} target="_blank" rel="noopener noreferrer" className="profile-link">
+                  <a href={`https://bsky.app/profile/${selectedNode.accountId}`} target="_blank" rel="noopener noreferrer" className="profile-link" style={{ display: 'inline' }}>
                     {selectedNode.accountId}
                   </a>
                 </div>
@@ -1264,62 +1277,21 @@ export default function App() {
                               cursor: 'pointer'
                             }}
                             onClick={() => {
-                              if (sigmaRef.current) {
-                                const graph = sigmaRef.current.getGraph();
-                                const nodeAttrs = graph.getNodeAttributes(user.id);
-                                if (nodeAttrs) {
-                                  const camera = sigmaRef.current.getCamera();
-                                  const bbox = sigmaRef.current.getBBox();
-
-                                  const width = bbox.x[1] - bbox.x[0];
-                                  const height = bbox.y[1] - bbox.y[0];
-                                  const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
-                                  const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
-
-                                  camera.animate(
-                                    {
-                                      x: normalizedX,
-                                      y: normalizedY,
-                                      ratio: 0.01,
-                                    },
-                                    { duration: 600 }
-                                  );
-                                }
-                              }
+                              selectNodeAndHighlight(user.id);
                             }}
                           />
                         )}
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0 }}>
+                        <div style={{ width: 'fit-content' }}>
                           <div
                             style={{
                               fontWeight: 'bold',
                               color: '#333',
                               cursor: 'pointer',
-                              wordBreak: 'break-word'
+                              wordBreak: 'break-word',
+                              marginBottom: '0.15rem'
                             }}
                             onClick={() => {
-                              if (sigmaRef.current) {
-                                const graph = sigmaRef.current.getGraph();
-                                const nodeAttrs = graph.getNodeAttributes(user.id);
-                                if (nodeAttrs) {
-                                  const camera = sigmaRef.current.getCamera();
-                                  const bbox = sigmaRef.current.getBBox();
-
-                                  const width = bbox.x[1] - bbox.x[0];
-                                  const height = bbox.y[1] - bbox.y[0];
-                                  const normalizedX = (nodeAttrs.x - bbox.x[0]) / width;
-                                  const normalizedY = (nodeAttrs.y - bbox.y[0]) / height;
-
-                                  camera.animate(
-                                    {
-                                      x: normalizedX,
-                                      y: normalizedY,
-                                      ratio: 0.01,
-                                    },
-                                    { duration: 600 }
-                                  );
-                                }
-                              }
+                              selectNodeAndHighlight(user.id);
                             }}
                           >
                             {user.displayName}
@@ -1331,8 +1303,7 @@ export default function App() {
                             style={{
                               color: '#1da1f2',
                               textDecoration: 'none',
-                              fontSize: '0.7rem',
-                              wordBreak: 'break-all'
+                              fontSize: '0.7rem'
                             }}
                           >
                             {user.accountId}
@@ -1347,10 +1318,85 @@ export default function App() {
 
             {/* Share Tab */}
             {panelTab === 'share' && (
-              <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.75rem' }}>
-                シェア機能は準備中です
+              <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                {selectedNode && graphData && selectedHashtag && (() => {
+                  // Get ranking position (search by id)
+                  const rankIndex = graphData.top_users.findIndex(u => u.id === selectedNode.id);
+                  const rank = rankIndex >= 0 ? rankIndex + 1 : 'N/A';
+
+                  // Get graph name (convert unified_vtuber to "vtuber Network")
+                  const graphName = selectedHashtag.startsWith('unified_')
+                    ? `${selectedHashtag.replace('unified_', '')} Network`
+                    : `#${selectedHashtag}`;
+
+                  // Generate share URL
+                  const shareUrl = `https://d1g3djqpjf3j38.cloudfront.net/?handle=${selectedNode.accountId}&network=${selectedHashtag}`;
+
+                  // Generate share text
+                  const today = new Date();
+                  const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+                  const shareText = `${selectedNode.displayName}さんの${graphName}への影響度は${rank}位です！(${dateStr})  ${shareUrl} #SkyStarCluster`;
+
+                  return (
+                    <div>
+                      <div style={{
+                        padding: '0.8rem',
+                        backgroundColor: '#f9f9f9',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        lineHeight: '1.4',
+                        color: '#333',
+                        wordBreak: 'break-word',
+                        maxHeight: '120px',
+                        overflow: 'auto'
+                      }}>
+                        {shareText}
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(shareText);
+                          alert('クリップボードにコピーしました');
+                        }}
+                        style={{
+                          padding: '0.6rem 1rem',
+                          background: '#ff6b4a',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                          width: '100%'
+                        }}
+                      >
+                        コピー
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             )}
+
+            {/* Draggable footer */}
+            <div
+              style={{
+                padding: '0.6rem',
+                borderTop: '1px solid #eee',
+                marginLeft: '-0.6rem',
+                marginRight: '-0.6rem',
+                marginBottom: '-0.6rem',
+                cursor: isDragging ? 'grabbing' : 'grab',
+                backgroundColor: '#f9f9f9',
+                borderRadius: '0 0 8px 8px',
+                textAlign: 'center',
+                fontSize: '0.7rem',
+                color: '#999',
+                userSelect: 'none'
+              }}
+              onMouseDown={handlePanelMouseDown}
+            >
+              ≡
+            </div>
           </div>
         )}
       </div>
