@@ -8,7 +8,7 @@ export default function App() {
   const containerRef = useRef(null);
   const sigmaRef = useRef(null);
   const headerRef = useRef(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hashtags, setHashtags] = useState([]);
   const [selectedHashtag, setSelectedHashtag] = useState(null);
@@ -351,9 +351,7 @@ export default function App() {
         const data = await response.json();
         let tags = data.hashtags || [];
         setHashtags(tags);
-        if (tags.length > 0) {
-          setSelectedHashtag(tags[0]);
-        }
+        // Don't auto-select: wait for user to choose
       } catch (err) {
         console.error('Error fetching hashtags:', err);
         setError('Failed to fetch available hashtags');
@@ -363,6 +361,13 @@ export default function App() {
     fetchHashtags();
   }, [apiEndpoint]);
 
+
+  // Close modals and reset state when hashtag changes
+  useEffect(() => {
+    setShowStats(false);
+    setShowInfo(false);
+    setSelectedNode(null);
+  }, [selectedHashtag]);
 
   // Fetch graph data when hashtag changes
   useEffect(() => {
@@ -614,6 +619,7 @@ export default function App() {
             disabled={loading}
             className="header-select"
           >
+            <option value="">グラフ選択</option>
             {hashtags.map((tag) => {
               const label = tag.startsWith('unified_')
                 ? `[統合] ${tag.replace('unified_', '')}`
@@ -625,7 +631,7 @@ export default function App() {
               );
             })}
           </select>
-          {graphData && (
+          {selectedHashtag && (
             <form onSubmit={handleSearch} className="search-form">
               <input
                 type="text"
@@ -637,13 +643,15 @@ export default function App() {
               <button type="submit" className="search-btn">検索</button>
             </form>
           )}
-          <button
-            onClick={() => setShowStats(!showStats)}
-            className="stats-btn"
-            title="統計情報"
-          >
-            グラフ情報
-          </button>
+          {selectedHashtag && (
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className="stats-btn"
+              title="統計情報"
+            >
+              グラフ情報
+            </button>
+          )}
         </h1>
         {error && <div className="error" onClick={() => setError(null)}>{error}</div>}
       </div>
@@ -655,7 +663,9 @@ export default function App() {
             <button onClick={handleZoomOut} title="ズームアウト" className="zoom-btn">−</button>
             <button onClick={handleReloadGraph} title="グラフをリロード" className="zoom-btn">↻</button>
           </div>
-          {loading ? (
+          {!selectedHashtag ? (
+            <div className="loading">グラフを選択してください</div>
+          ) : loading ? (
             <div className="loading">グラフを読み込み中...</div>
           ) : (
             <>

@@ -395,9 +395,9 @@ body {
 
 .stats-btn {
   padding: 0.4rem 1rem;
-  border: 1px solid #1da1f2;
+  border: 1px solid #ff6b4a;
   border-radius: 4px;
-  background: #1da1f2;
+  background: #ff6b4a;
   color: white;
   font-size: 0.8rem;
   font-weight: 600;
@@ -408,8 +408,8 @@ body {
 }
 
 .stats-btn:hover {
-  background: #1a8cd8;
-  border-color: #1a8cd8;
+  background: #ff5733;
+  border-color: #ff5733;
 }
 
 .modal-overlay {
