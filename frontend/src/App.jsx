@@ -963,10 +963,31 @@ export default function App() {
               top: `${panelPos.y}px`
             }}
           >
+            {/* Draggable header */}
+            <div
+              style={{
+                padding: '0.6rem',
+                borderBottom: '1px solid #eee',
+                marginLeft: '-0.6rem',
+                marginRight: '-0.6rem',
+                marginTop: '-0.6rem',
+                marginBottom: '0',
+                cursor: isDragging ? 'grabbing' : 'grab',
+                backgroundColor: '#f9f9f9',
+                borderRadius: '8px 8px 0 0',
+                textAlign: 'center',
+                fontSize: '0.7rem',
+                color: '#999',
+                userSelect: 'none'
+              }}
+              onMouseDown={handlePanelMouseDown}
+            >
+              ≡
+            </div>
+
             {/* Tab buttons */}
             <div
-              style={{ display: 'flex', gap: '0', borderBottom: '1px solid #eee', marginBottom: '0.6rem', marginLeft: '-0.6rem', marginRight: '-0.6rem', marginTop: '-0.6rem', paddingLeft: '0.6rem', paddingRight: '0.6rem', cursor: isDragging ? 'grabbing' : 'grab' }}
-              onMouseDown={handlePanelMouseDown}
+              style={{ display: 'flex', gap: '0', borderBottom: '1px solid #eee', marginBottom: '0.6rem', marginLeft: '-0.6rem', marginRight: '-0.6rem', marginTop: '0', paddingLeft: '0.6rem', paddingRight: '0.6rem' }}
             >
               <button
                 onClick={() => setPanelTab('info')}
@@ -1130,7 +1151,7 @@ export default function App() {
                   </div>
                 )}
                 {graphData?.top_users && (
-                  <div className="stats-row">
+                  <div className="stats-row" style={{ paddingBottom: '0.6rem' }}>
                     {(() => {
                       const rank = graphData.top_users.findIndex(u => u.id === selectedNode.id);
                       return rank >= 0 ? (
