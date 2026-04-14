@@ -48,7 +48,7 @@ body {
 }
 
 .header h1 {
-  font-size: 0.95rem;
+  font-size: 1.0rem;
   margin: 0;
   font-weight: 600;
   display: flex;
@@ -261,7 +261,7 @@ body {
 }
 
 .user-panel {
-  width: 320px;
+  width: 420px;
   background: white;
   border: 1px solid #ddd;
   border-radius: 4px;

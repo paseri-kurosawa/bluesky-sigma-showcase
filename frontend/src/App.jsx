@@ -599,7 +599,7 @@ export default function App() {
     <div className="app-container">
       <div className="header" ref={headerRef}>
         <h1>
-          Sky Star Cluster <span style={{ fontSize: '0.65em', color: '#999', fontWeight: '400' }}>from BlueSky</span>
+          Sky Star Cluster <span style={{ fontSize: '0.65em', color: '#999', fontWeight: '400', verticalAlign: 'baseline', position: 'relative', top: '0.1em' }}>from BlueSky</span>
           <button
             onClick={() => setShowInfo(!showInfo)}
             className="info-btn"
@@ -998,6 +998,26 @@ export default function App() {
               >
                 {topPostLoading ? '読込中...' : 'トップポスト'}
               </button>
+              <button
+                onClick={() => setPanelTab('share')}
+                style={{
+                  flex: 1,
+                  padding: '0.6rem 0.1rem',
+                  border: 'none',
+                  background: panelTab === 'share' ? 'white' : '#f9f9f9',
+                  color: panelTab === 'share' ? '#1da1f2' : '#666',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  borderBottom: panelTab === 'share' ? '2px solid #1da1f2' : 'none',
+                  marginBottom: panelTab === 'share' ? '-1px' : '0',
+                  transition: 'all 0.2s',
+                  borderRight: 'none'
+                }}
+              >
+                シェア
+              </button>
             </div>
 
             {/* Info Tab */}
@@ -1176,6 +1196,7 @@ export default function App() {
                       <span>❤️ {topPost.likeCount || 0}</span>
                       <span>💬 {topPost.replyCount || 0}</span>
                       <span>🔄 {topPost.repostCount || 0}</span>
+                      {topPost.hasImages && <span>🖼️</span>}
                     </div>
                     <a
                       href={`https://bsky.app/profile/${topPost.author?.handle}/post/${topPost.uri?.split('/').pop()}`}
@@ -1312,6 +1333,13 @@ export default function App() {
                   </div>
                 )}
               </>
+            )}
+
+            {/* Share Tab */}
+            {panelTab === 'share' && (
+              <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '0.75rem' }}>
+                シェア機能は準備中です
+              </div>
             )}
           </div>
         )}

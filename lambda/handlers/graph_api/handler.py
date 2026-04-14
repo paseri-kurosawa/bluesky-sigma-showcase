@@ -251,6 +251,12 @@ def handle_get_top_post(handle: str) -> Dict:
                 "message": f"No top posts found for @{handle}"
             })
 
+        # Check if post has images
+        has_images = False
+        if hasattr(post, 'embed') and post.embed is not None:
+            if hasattr(post.embed, 'images') and post.embed.images:
+                has_images = True
+
         # Extract relevant post data
         post_data = {
             "uri": post.uri,
@@ -267,6 +273,7 @@ def handle_get_top_post(handle: str) -> Dict:
             "likeCount": getattr(post, 'like_count', 0),
             "replyCount": getattr(post, 'reply_count', 0),
             "repostCount": getattr(post, 'repost_count', 0),
+            "hasImages": has_images,
         }
 
         print(f"[API] Found top post for @{handle}")
