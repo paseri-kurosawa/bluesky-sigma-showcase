@@ -505,7 +505,7 @@ body {
 
 .stats-modal {
   position: fixed;
-  right: 20px;
+  right: 10px;
   width: 280px;
   background: white;
   border-radius: 4px;
