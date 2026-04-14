@@ -2,12 +2,8 @@ import os
 import json
 import boto3
 import re
-import base64
-import requests
-from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
-from PIL import Image, ImageDraw, ImageFont
 
 # AWS Clients
 s3_client = boto3.client('s3')
@@ -294,98 +290,6 @@ def handle_get_top_post(handle: str) -> Dict:
         })
 
 
-def handle_generate_share_image(query_params: Dict) -> Dict:
-    """
-    Handle GET /api/user/{handle}/share-image
-    Generates a share image with user info, rank, graph name, and date.
-
-    Query Parameters:
-        displayName: User display name
-        avatarUrl: User avatar image URL
-        rank: Ranking number
-        graphName: Graph/network name
-        date: Date string (YYYY-MM-DD format)
-
-    Returns:
-        PNG image as base64-encoded data URL or error
-    """
-    try:
-        display_name = query_params.get('displayName', 'Unknown')
-        avatar_url = query_params.get('avatarUrl', '')
-        rank = query_params.get('rank', 'N/A')
-        graph_name = query_params.get('graphName', 'Network')
-        date_str = query_params.get('date', datetime.now(JST).strftime('%Y-%m-%d'))
-
-        # Create base image (1200x630)
-        img = Image.new('RGB', (1200, 630), color=(15, 22, 40))  # Dark blue background
-        draw = ImageDraw.Draw(img)
-
-        # Try to load fonts (fallback to default if not available)
-        try:
-            title_font = ImageFont.truetype('/var/task/fonts/arial-bold.ttf', 48) if os.path.exists('/var/task/fonts/arial-bold.ttf') else ImageFont.load_default()
-            text_font = ImageFont.truetype('/var/task/fonts/arial.ttf', 32) if os.path.exists('/var/task/fonts/arial.ttf') else ImageFont.load_default()
-            small_font = ImageFont.truetype('/var/task/fonts/arial.ttf', 24) if os.path.exists('/var/task/fonts/arial.ttf') else ImageFont.load_default()
-        except:
-            title_font = text_font = small_font = ImageFont.load_default()
-
-        # Download and paste avatar if URL provided
-        if avatar_url:
-            try:
-                response = requests.get(avatar_url, timeout=5)
-                avatar_img = Image.open(BytesIO(response.content))
-                # Crop to square and resize
-                size = min(avatar_img.size)
-                avatar_img = avatar_img.crop(((avatar_img.width - size) // 2, (avatar_img.height - size) // 2,
-                                               (avatar_img.width - size) // 2 + size, (avatar_img.height - size) // 2 + size))
-                avatar_img = avatar_img.resize((150, 150), Image.Resampling.LANCZOS)
-                # Create circular mask
-                mask = Image.new('L', (150, 150), 0)
-                mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse([0, 0, 150, 150], fill=255)
-                avatar_img.putalpha(mask)
-                img.paste(avatar_img, (60, 240), avatar_img)
-            except Exception as e:
-                print(f"[IMAGE] Failed to download avatar: {str(e)}")
-
-        # Draw text elements
-        # Rank badge
-        draw.text((250, 260), f"#{rank}", font=title_font, fill=(255, 107, 74))  # Orange-red
-
-        # Display name
-        draw.text((250, 330), display_name, font=text_font, fill=(255, 255, 255))
-
-        # Graph name and date
-        draw.text((250, 390), f"{graph_name} • {date_str}", font=small_font, fill=(150, 150, 150))
-
-        # Convert image to bytes
-        img_bytes = BytesIO()
-        img.save(img_bytes, format='PNG')
-        img_bytes.seek(0)
-
-        # Return as base64-encoded PNG
-        img_b64 = base64.b64encode(img_bytes.getvalue()).decode('utf-8')
-
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "image/png",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "max-age=3600"
-            },
-            "body": img_b64,
-            "isBase64Encoded": True
-        }
-
-    except Exception as e:
-        print(f"[IMAGE ERROR] Failed to generate share image: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return build_response(500, {
-            "error": "Failed to generate share image",
-            "message": str(e)
-        })
-
-
 def handle_options() -> Dict:
     """Handle CORS preflight request"""
     return {
@@ -408,7 +312,6 @@ def lambda_handler(event, context):
     - GET /api/graph/latest → Latest graph (first available hashtag)
     - GET /api/graph/{hashtag}/latest → Latest graph for specific hashtag
     - GET /api/user/{handle}/top-post → Top post for a user
-    - GET /api/user/{handle}/share-image → Generate share image
     - GET /api/hashtags → List whitelisted hashtags
     - OPTIONS /* → CORS preflight
     """
@@ -425,13 +328,8 @@ def lambda_handler(event, context):
 
         # Handle GET requests
         if http_method == 'GET':
-            # Route: /api/user/{handle}/share-image
-            if 'user' in path and 'share-image' in path:
-                query_params = event.get('queryStringParameters', {}) or {}
-                return handle_generate_share_image(query_params)
-
             # Route: /api/user/{handle}/top-post
-            elif 'user' in path and 'top-post' in path:
+            if 'user' in path and 'top-post' in path:
                 handle = path_parameters.get('handle') if path_parameters else None
                 if not handle:
                     return build_response(400, {

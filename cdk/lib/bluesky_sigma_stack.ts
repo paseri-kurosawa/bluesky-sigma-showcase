@@ -152,13 +152,11 @@ export class BlueskySigmaStack extends cdk.Stack {
     const hashtagLatestResource = hashtagResource.addResource('latest');
     hashtagLatestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
-    // /api/user/{handle}/top-post and /api/user/{handle}/share-image
+    // /api/user/{handle}/top-post
     const userResource = apiResource.addResource('user');
     const handleResource = userResource.addResource('{handle}');
     const topPostResource = handleResource.addResource('top-post');
     topPostResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
-    const shareImageResource = handleResource.addResource('share-image');
-    shareImageResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
     // === EventBridge Rule (Hourly Schedule) ===
     const crawlerRule = new events.Rule(this, 'HourlyGraphCrawlerRule', {
