@@ -1281,14 +1281,15 @@ export default function App() {
                             }}
                           />
                         )}
-                        <div style={{ width: 'fit-content' }}>
+                        <div>
                           <div
                             style={{
                               fontWeight: 'bold',
                               color: '#333',
                               cursor: 'pointer',
                               wordBreak: 'break-word',
-                              marginBottom: '0.15rem'
+                              marginBottom: '0.15rem',
+                              width: 'fit-content'
                             }}
                             onClick={() => {
                               selectNodeAndHighlight(user.id);
@@ -1303,7 +1304,8 @@ export default function App() {
                             style={{
                               color: '#1da1f2',
                               textDecoration: 'none',
-                              fontSize: '0.7rem'
+                              fontSize: '0.7rem',
+                              display: 'inline'
                             }}
                           >
                             {user.accountId}
