@@ -459,6 +459,8 @@ export default function App() {
 
       // Step 2: Apply ForceAtlas2 force-directed layout
       const settings = forceAtlas2.inferSettings(graph);
+      settings.scalingRatio = 1;  // Minimal scaling ratio
+      settings.gravity = 10;  // Increase gravity for better node dispersion
       forceAtlas2.assign(graph, {
         iterations: 150,
         settings: settings,
@@ -597,7 +599,7 @@ export default function App() {
     <div className="app-container">
       <div className="header" ref={headerRef}>
         <h1>
-          Bluesky User Network Graph
+          Sky Star Cluster <span style={{ fontSize: '0.65em', color: '#999', fontWeight: '400' }}>from BlueSky</span>
           <button
             onClick={() => setShowInfo(!showInfo)}
             className="info-btn"
@@ -668,7 +670,7 @@ export default function App() {
             <div className="modal-overlay" onClick={() => setShowInfo(false)} />
             <div className="info-modal" style={{ top: `${headerHeight}px` }}>
               <div className="info-modal-header">
-                <h2>Bluesky User Network Graph について</h2>
+                <h2>Sky Star Cluster について</h2>
                 <button
                   onClick={() => setShowInfo(false)}
                   className="close-btn"
@@ -1076,7 +1078,7 @@ export default function App() {
                 {selectedNode.hashtags && selectedNode.hashtags.length > 0 && (
                   <div className="stats-row">
                     <span style={{ fontSize: '0.65rem', color: '#666' }}>
-                      使用ハッシュタグ: <strong>
+                      ハッシュタグ: <strong>
                         {selectedNode.hashtags.map((tag, idx) => (
                           <div key={idx}>{tag.startsWith('#') ? tag : `#${tag}`}</div>
                         ))}
