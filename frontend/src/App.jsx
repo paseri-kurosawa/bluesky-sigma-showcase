@@ -234,12 +234,28 @@ export default function App() {
     });
   };
 
+  const handlePanelTouchStart = (e) => {
+    setIsDragging(true);
+    setDragStart({
+      x: e.touches[0].clientX - panelPos.x,
+      y: e.touches[0].clientY - panelPos.y,
+    });
+  };
+
   useEffect(() => {
     const handleMouseMove = (e) => {
       if (!isDragging) return;
       setPanelPos({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y,
+      });
+    };
+
+    const handleTouchMove = (e) => {
+      if (!isDragging) return;
+      setPanelPos({
+        x: e.touches[0].clientX - dragStart.x,
+        y: e.touches[0].clientY - dragStart.y,
       });
     };
 
@@ -250,9 +266,13 @@ export default function App() {
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('touchmove', handleTouchMove);
+      document.addEventListener('touchend', handleMouseUp);
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleMouseUp);
       };
     }
   }, [isDragging, dragStart]);
@@ -978,9 +998,11 @@ export default function App() {
                 textAlign: 'center',
                 fontSize: '0.7rem',
                 color: '#999',
-                userSelect: 'none'
+                userSelect: 'none',
+                touchAction: 'none'
               }}
               onMouseDown={handlePanelMouseDown}
+              onTouchStart={handlePanelTouchStart}
             >
               ≡
             </div>
@@ -1414,9 +1436,11 @@ export default function App() {
                 textAlign: 'center',
                 fontSize: '0.7rem',
                 color: '#999',
-                userSelect: 'none'
+                userSelect: 'none',
+                touchAction: 'none'
               }}
               onMouseDown={handlePanelMouseDown}
+              onTouchStart={handlePanelTouchStart}
             >
               ≡
             </div>
