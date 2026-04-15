@@ -1,17 +1,31 @@
 import os
 import json
 import boto3
-import re
+import base64
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
+
+# Patch pathlib BEFORE importing pyppeteer to prevent /home directory access
+import pathlib
+_original_expanduser = pathlib.Path.expanduser
+
+def _patched_expanduser(self):
+    # Return /tmp directly instead of calling original
+    return pathlib.Path('/tmp')
+
+pathlib.Path.expanduser = _patched_expanduser
+
+# Set environment for pyppeteer
+os.environ['HOME'] = '/tmp'
+os.environ['TMPDIR'] = '/tmp'
+os.environ['PYPPETEER_HOME'] = '/opt/chromium-cache/pyppeteer'
+
+from pyppeteer import launch
 
 # AWS Clients
 s3_client = boto3.client('s3')
 secrets_client = boto3.client('secretsmanager')
-
-# AT Protocol Client
-from atproto import Client
-from atproto_client.models.app.bsky.feed.search_posts import Params as SearchParams
 
 # JST timezone
 JST = timezone(timedelta(hours=9))
@@ -195,6 +209,254 @@ def handle_list_hashtags() -> Dict:
         })
 
 
+async def generate_share_image_with_puppeteer(display_name: str, handle: str, avatar_url: str,
+                                               follower_count: str, follows_count: str, posts_count: str,
+                                               rank: str, graph_name: str, snapshot_time: str) -> bytes:
+    """
+    Generate share image using Puppeteer (HTML + CSS rendering).
+    Puppeteer uses Chromium browser, which natively supports emoji rendering.
+
+    Returns:
+        PNG image as bytes
+    """
+    # Determine font paths
+    font_dir = '/opt/python/fonts'  # Lambda layer location
+    noto_sans_jp_path = f'{font_dir}/NotoSansJP-VariableFont_wght.ttf'
+    noto_emoji_path = f'{font_dir}/NotoColorEmoji-Regular.ttf'
+
+    # Fallback to system fonts if not in layer
+    if not os.path.exists(noto_sans_jp_path):
+        noto_sans_jp_path = '/usr/share/fonts/opentype/noto/NotoSansJP-Regular.otf'
+    if not os.path.exists(noto_emoji_path):
+        noto_emoji_path = '/usr/share/fonts/opentype/noto/NotoColorEmoji-Regular.ttf'
+
+    # Convert to data: URLs for CSS
+    def font_to_data_url(font_path: str) -> str:
+        """Convert font file to data URL"""
+        if not os.path.exists(font_path):
+            print(f"[FONT] Warning: Font not found: {font_path}")
+            return ""
+        try:
+            with open(font_path, 'rb') as f:
+                font_data = base64.b64encode(f.read()).decode('utf-8')
+            return f"data:font/ttf;base64,{font_data}"
+        except Exception as e:
+            print(f"[FONT] Error reading {font_path}: {e}")
+            return ""
+
+    noto_sans_jp_url = font_to_data_url(noto_sans_jp_path)
+    noto_emoji_url = font_to_data_url(noto_emoji_path)
+
+    # HTML template with CSS
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            @font-face {{
+                font-family: 'Noto Sans JP';
+                src: url('{noto_sans_jp_url}') format('truetype');
+            }}
+            @font-face {{
+                font-family: 'Noto Color Emoji';
+                src: url('{noto_emoji_url}') format('truetype');
+            }}
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                width: 1200px;
+                height: 630px;
+                background: white;
+                font-family: "Noto Sans JP", "Noto Color Emoji", sans-serif;
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-start;
+                padding: 50px 30px 30px 30px;
+            }}
+            .container {{
+                display: flex;
+                gap: 20px;
+                align-items: flex-start;
+            }}
+            .avatar {{
+                width: 180px;
+                height: 180px;
+                border-radius: 50%;
+                object-fit: cover;
+                flex-shrink: 0;
+            }}
+            .content {{
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+            }}
+            .display-name {{
+                font-size: 60px;
+                font-weight: 900;
+                color: #000;
+                word-break: break-word;
+            }}
+            .handle {{
+                font-size: 32px;
+                font-weight: 400;
+                color: #646464;
+            }}
+            .stats {{
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                font-size: 40px;
+                font-weight: 600;
+                color: #3c3c3c;
+            }}
+            .rank {{
+                font-size: 56px;
+                font-weight: 700;
+                color: #ff6b4a;
+                margin-top: 10px;
+            }}
+            .footer {{
+                position: absolute;
+                bottom: 20px;
+                width: 100%;
+                padding: 0 30px;
+                display: flex;
+                justify-content: space-between;
+                font-size: 26px;
+                font-weight: 400;
+                color: #505050;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <img class="avatar" src="{avatar_url}" alt="avatar" onerror="this.style.display='none'" />
+            <div class="content">
+                <div class="display-name">⭐ {display_name}</div>
+                <div class="handle">@{handle}</div>
+                <div class="stats">
+                    <div>📝 Posts: {int(float(posts_count)):,}</div>
+                    <div>👥 Follows: {int(float(follows_count)):,}</div>
+                    <div>💬 Followers: {int(float(follower_count)):,}</div>
+                </div>
+                <div class="rank">🏆 {graph_name} Rank #{rank}</div>
+            </div>
+        </div>
+        <div class="footer">
+            <div>📅 {snapshot_time}</div>
+            <div>✨ Generated by Sky Star Cluster</div>
+        </div>
+    </body>
+    </html>
+    """
+
+    browser = None
+    try:
+        # Launch Chromium with Puppeteer
+        # Create necessary directories
+        os.makedirs('/tmp/chromium-user-data', exist_ok=True)
+        os.makedirs('/tmp/chromium-cache', exist_ok=True)
+
+        # Use pre-downloaded Chromium from image
+        chromium_path = '/opt/chromium-cache/pyppeteer/local-chromium/1181205/chrome-linux/chrome'
+
+        browser = await launch(
+            executablePath=chromium_path,
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--single-process',  # Reduce memory overhead
+                '--user-data-dir=/tmp/chromium-user-data',
+                '--cache-dir=/tmp/chromium-cache'
+            ]
+        )
+        page = await browser.newPage()
+        await page.setViewport({'width': 1200, 'height': 630})
+
+        # Set content and render
+        await page.setContent(html_content)
+
+        # Take screenshot
+        png_bytes = await page.screenshot({'type': 'png'})
+
+        await page.close()
+        await browser.close()
+
+        return png_bytes
+
+    except Exception as e:
+        import traceback
+        print(f"[PUPPETEER ERROR] {str(e)}")
+        traceback.print_exc()
+        if browser:
+            try:
+                await browser.close()
+            except:
+                pass
+        raise
+
+
+def handle_generate_share_image(query_params: Dict) -> Dict:
+    """
+    Handle GET /api/user/{handle}/share-image
+    Generates a share image with user info, rank, graph name, and snapshot time.
+    """
+    try:
+        display_name = query_params.get('displayName', 'Unknown')
+        handle = query_params.get('handle', '')
+        avatar_url = query_params.get('avatarUrl', '')
+        follower_count = query_params.get('followerCount', '0')
+        follows_count = query_params.get('followsCount', '0')
+        posts_count = query_params.get('postsCount', '0')
+        rank = query_params.get('rank', 'N/A')
+        graph_name = query_params.get('graphName', 'Network')
+        snapshot_time = query_params.get('snapshotTime', 'Unknown')
+
+        # Run async function
+        png_data = asyncio.run(generate_share_image_with_puppeteer(
+            display_name=display_name,
+            handle=handle,
+            avatar_url=avatar_url,
+            follower_count=str(follower_count),
+            follows_count=str(follows_count),
+            posts_count=str(posts_count),
+            rank=str(rank),
+            graph_name=graph_name,
+            snapshot_time=snapshot_time
+        ))
+
+        # Return as base64-encoded PNG
+        img_b64 = base64.b64encode(png_data).decode('utf-8')
+
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "image/png",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "max-age=3600"
+            },
+            "body": img_b64,
+            "isBase64Encoded": True
+        }
+
+    except Exception as e:
+        import traceback
+        print(f"[IMAGE ERROR] Failed to generate share image: {str(e)}")
+        traceback.print_exc()
+        return build_response(500, {
+            "error": "Failed to generate share image",
+            "message": str(e)
+        })
+
+
 def handle_get_top_post(handle: str) -> Dict:
     """
     Handle GET /api/user/{handle}/top-post
@@ -328,8 +590,14 @@ def lambda_handler(event, context):
 
         # Handle GET requests
         if http_method == 'GET':
+            # Route: /api/user/{handle}/share-image
+            if 'user' in path and 'share-image' in path:
+                query_params = event.get('queryStringParameters', {}) or {}
+                query_params['handle'] = path_parameters.get('handle') if path_parameters else ''
+                return handle_generate_share_image(query_params)
+
             # Route: /api/user/{handle}/top-post
-            if 'user' in path and 'top-post' in path:
+            elif 'user' in path and 'top-post' in path:
                 handle = path_parameters.get('handle') if path_parameters else None
                 if not handle:
                     return build_response(400, {

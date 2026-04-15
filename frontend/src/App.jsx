@@ -1416,6 +1416,99 @@ export default function App() {
                       >
                         コピー
                       </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            // Format snapshot timestamp: yyyy/mm/dd hh:mm:ss
+                            const generatedAt = graphData?.metadata?.timestamp || graphData?.metadata?.generatedAt;
+                            let snapshotTime = '';
+                            if (generatedAt) {
+                              const dt = new Date(generatedAt);
+                              const yyyy = dt.getFullYear();
+                              const mm = String(dt.getMonth() + 1).padStart(2, '0');
+                              const dd = String(dt.getDate()).padStart(2, '0');
+                              const hh = String(dt.getHours()).padStart(2, '0');
+                              const min = String(dt.getMinutes()).padStart(2, '0');
+                              const ss = String(dt.getSeconds()).padStart(2, '0');
+                              snapshotTime = `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`;
+                            }
+
+                            const params = new URLSearchParams({
+                              displayName: selectedNode.displayName || 'Unknown',
+                              avatarUrl: selectedNode.avatar || '',
+                              followerCount: String(selectedNode.followersCount || 0),
+                              followsCount: String(selectedNode.followsCount || 0),
+                              postsCount: String(selectedNode.postsCount || 0),
+                              rank: String(rank || 'N/A'),
+                              graphName: graphName || 'Network',
+                              snapshotTime: snapshotTime || 'Unknown'
+                            });
+
+                            // Debug log
+                            console.log('[SHARE IMAGE] Selected Node:', selectedNode);
+                            console.log('[SHARE IMAGE] Params:', {
+                              displayName: selectedNode.displayName,
+                              followersCount: selectedNode.followersCount,
+                              followsCount: selectedNode.followsCount,
+                              postsCount: selectedNode.postsCount,
+                              snapshotTime: snapshotTime
+                            });
+
+                            const apiUrl = `${apiEndpoint}/api/user/${selectedNode.accountId}/share-image?${params.toString()}`;
+
+                            // Fetch base64 image
+                            const response = await fetch(apiUrl);
+                            const base64Data = await response.text();
+
+                            // Convert base64 to Blob
+                            const binaryString = atob(base64Data);
+                            const bytes = new Uint8Array(binaryString.length);
+                            for (let i = 0; i < binaryString.length; i++) {
+                              bytes[i] = binaryString.charCodeAt(i);
+                            }
+                            const blob = new Blob([bytes], { type: 'image/png' });
+
+                            // Create File object
+                            const file = new File([blob], `${selectedNode.displayName}-rank${rank}.png`, {
+                              type: 'image/png'
+                            });
+
+                            // Share via Web Share API
+                            if (navigator.share) {
+                              await navigator.share({
+                                title: selectedNode.displayName,
+                                text: `ランク: ${rank} / グラフ: ${graphName}`,
+                                files: [file]
+                              });
+                            } else {
+                              // Fallback: download
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `${selectedNode.displayName}-rank${rank}.png`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }
+                          } catch (error) {
+                            console.error('画像生成エラー:', error);
+                            alert('画像生成に失敗しました');
+                          }
+                        }}
+                        style={{
+                          padding: '0.05rem 0.1rem',
+                          background: 'transparent',
+                          color: '#d0d0d0',
+                          border: '1px solid #e8e8e8',
+                          borderRadius: '1px',
+                          fontSize: '0.35rem',
+                          fontWeight: 300,
+                          cursor: 'pointer',
+                          marginTop: '0.1rem',
+                          opacity: 0.3
+                        }}
+                      >
+                        画像生成
+                      </button>
                     </div>
                   );
                 })()}

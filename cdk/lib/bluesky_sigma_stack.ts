@@ -64,6 +64,13 @@ export class BlueskySigmaStack extends cdk.Stack {
       description: 'Python dependencies for graph crawler',
     });
 
+    // === Lambda Layer (Fonts) ===
+    const fontsLayer = new lambda.LayerVersion(this, 'FontsLayer', {
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/layers/fonts')),
+      compatibleRuntimes: [lambda.Runtime.PYTHON_3_12],
+      description: 'Noto Sans JP font for image generation',
+    });
+
     // === Lambda: Graph Crawler ===
     const graphCrawlerLambda = new lambda.Function(this, 'GraphCrawlerLambda', {
       functionName: 'bluesky-sigma-graph-crawler',
@@ -104,21 +111,17 @@ export class BlueskySigmaStack extends cdk.Stack {
       })
     );
 
-    // === Lambda: API Endpoint ===
-    const graphApiLambda = new lambda.Function(this, 'GraphApiLambda', {
-      functionName: 'bluesky-sigma-graph-api',
-      runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'handler.lambda_handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/handlers/graph_api')),
+    // === Lambda: API Endpoint (Docker Image with Chromium) ===
+    const graphApiLambda = new lambda.DockerImageFunction(this, 'GraphApiLambda', {
+      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '../../lambda/handlers/graph_api')),
       role: lambdaExecutionRole,
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
-      reservedConcurrentExecutions: 10,  // Limit concurrent executions to prevent abuse
+      timeout: cdk.Duration.minutes(5),  // Extended for Chromium startup (Puppeteer rendering takes time)
+      memorySize: 3008,  // 3GB for Chromium + image processing
+      reservedConcurrentExecutions: 10,
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_PREFIX: 'sigma-graph/',
       },
-      layers: [dependenciesLayer],
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
@@ -126,6 +129,7 @@ export class BlueskySigmaStack extends cdk.Stack {
     const api = new apigateway.RestApi(this, 'GraphApi', {
       restApiName: 'bluesky-sigma-graph-api',
       description: 'API for fetching graph data',
+      binaryMediaTypes: ['image/png'],  // Support binary PNG images
       defaultCorsPreflightOptions: {
         allowOrigins: [
           'https://d1g3djqpjf3j38.cloudfront.net',  // Production CloudFront domain
@@ -152,11 +156,13 @@ export class BlueskySigmaStack extends cdk.Stack {
     const hashtagLatestResource = hashtagResource.addResource('latest');
     hashtagLatestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
-    // /api/user/{handle}/top-post
+    // /api/user/{handle}/top-post and /api/user/{handle}/share-image
     const userResource = apiResource.addResource('user');
     const handleResource = userResource.addResource('{handle}');
     const topPostResource = handleResource.addResource('top-post');
     topPostResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
+    const shareImageResource = handleResource.addResource('share-image');
+    shareImageResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
     // === EventBridge Rule (Hourly Schedule) ===
     const crawlerRule = new events.Rule(this, 'HourlyGraphCrawlerRule', {
