@@ -187,9 +187,10 @@ export default function App() {
 
     const fetchGraphData = async () => {
       try {
-        const url = selectedHashtag
-          ? `${apiEndpoint}/api/graph/${encodeURIComponent(selectedHashtag)}/latest`
-          : `${apiEndpoint}/api/graph/latest`;
+        if (!selectedHashtag) {
+          throw new Error('Hashtag not selected');
+        }
+        const url = `https://${window.location.hostname}/sigma-graph/${encodeURIComponent(selectedHashtag)}/users_merged.json`;
 
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch graph data');
@@ -482,9 +483,10 @@ export default function App() {
       setSelectedFilterHashtag(null);
 
       try {
-        const url = selectedHashtag
-          ? `${apiEndpoint}/api/graph/${encodeURIComponent(selectedHashtag)}/latest`
-          : `${apiEndpoint}/api/graph/latest`;
+        if (!selectedHashtag) {
+          throw new Error('Hashtag not selected');
+        }
+        const url = `https://${window.location.hostname}/sigma-graph/${encodeURIComponent(selectedHashtag)}/users_merged.json`;
 
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch graph data');

@@ -126,65 +126,6 @@ def list_hashtags() -> list:
 
 
 # === API Handlers ===
-def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
-    """
-    Handle GET /api/graph/latest or GET /api/graph/{hashtag}/latest
-
-    Args:
-        path_parameters: Path parameters from API Gateway
-
-    Returns:
-        API response
-    """
-    try:
-        if not path_parameters or 'hashtag' not in path_parameters:
-            # No hashtag specified - return first available hashtag's latest graph
-            hashtags = list_hashtags()
-            if not hashtags:
-                return build_response(404, {
-                    "error": "No graph data available",
-                    "message": "No hashtag graphs have been generated yet"
-                })
-
-            hashtag = hashtags[0]
-            print(f"[API] No hashtag specified, using first available: {hashtag}")
-        else:
-            hashtag = path_parameters['hashtag']
-            # URL decode if necessary
-            import urllib.parse
-            hashtag = urllib.parse.unquote(hashtag)
-
-            # Validate hashtag - only allow unified_* categories
-            if not hashtag.startswith('unified_'):
-                return build_response(404, {
-                    "error": "Hashtag not found",
-                    "hashtag": hashtag
-                })
-
-        # Fetch accumulated merged graph (蓄積されたユーザー情報を使用)
-        s3_key = f"{S3_PREFIX}{hashtag}/users_merged.json"
-        graph = get_graph_from_s3(s3_key)
-
-        if not graph:
-            return build_response(404, {
-                "error": "Graph not found",
-                "hashtag": hashtag,
-                "message": f"No graph data found for #{hashtag}"
-            })
-
-        print(f"[API] Successfully fetched latest graph for #{hashtag}")
-        return build_response(200, graph)
-
-    except Exception as e:
-        print(f"[API ERROR] {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return build_response(500, {
-            "error": "Internal server error",
-            "message": str(e)
-        })
-
-
 def handle_list_hashtags() -> Dict:
     """
     Handle GET /api/hashtags or /api/graph/list
@@ -624,11 +565,12 @@ def lambda_handler(event, context):
     Main Lambda handler for graph API.
 
     Routes:
-    - GET /api/graph/latest → Latest graph (first available hashtag)
-    - GET /api/graph/{hashtag}/latest → Latest graph for specific hashtag
     - GET /api/user/{handle}/top-post → Top post for a user
+    - GET /api/user/{handle}/share-image → Share image for a user
     - GET /api/hashtags → List whitelisted hashtags
     - OPTIONS /* → CORS preflight
+
+    Note: Graph data (/api/graph/{hashtag}/latest) is served directly from S3 via CloudFront
     """
     print(f"[HANDLER] Event: {json.dumps(event)}")
 
@@ -658,10 +600,6 @@ def lambda_handler(event, context):
                         "message": "handle parameter required"
                     })
                 return handle_get_top_post(handle)
-
-            # Route: /api/graph/latest or /api/graph/{hashtag}/latest
-            elif 'graph' in path and 'latest' in path:
-                return handle_get_latest(path_parameters)
 
             # Route: /api/hashtags (whitelisted list for header)
             elif 'hashtags' in path:

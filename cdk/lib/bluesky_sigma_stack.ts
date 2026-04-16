@@ -146,16 +146,6 @@ export class BlueskySigmaStack extends cdk.Stack {
     const hashtagsResource = apiResource.addResource('hashtags');
     hashtagsResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
 
-    // /api/graph/latest
-    const graphResource = apiResource.addResource('graph');
-    const latestResource = graphResource.addResource('latest');
-    latestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
-
-    // /api/graph/{hashtag}/latest
-    const hashtagResource = graphResource.addResource('{hashtag}');
-    const hashtagLatestResource = hashtagResource.addResource('latest');
-    hashtagLatestResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
-
     // /api/user/{handle}/top-post and /api/user/{handle}/share-image
     const userResource = apiResource.addResource('user');
     const handleResource = userResource.addResource('{handle}');
@@ -180,6 +170,20 @@ export class BlueskySigmaStack extends cdk.Stack {
     });
     frontendBucket.grantRead(oai);
 
+    // === OAI for Graph Data Bucket ===
+    const graphDataOai = new cloudfront.OriginAccessIdentity(this, 'GraphDataOAI', {
+      comment: 'OAI for graph data bucket access',
+    });
+    // Note: grantRead may not work on imported buckets, so we add explicit bucket policy
+    graphDataBucket.addToResourcePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        principals: [new iam.CanonicalUserPrincipal(graphDataOai.canonic​alUserId)],
+        actions: ['s3:GetObject'],
+        resources: [graphDataBucket.arnForObjects('*')],
+      })
+    );
+
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessIdentity(frontendBucket, {
@@ -187,6 +191,15 @@ export class BlueskySigmaStack extends cdk.Stack {
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      additionalBehaviors: {
+        '/sigma-graph/*': {
+          origin: S3BucketOrigin.withOriginAccessIdentity(graphDataBucket, {
+            originAccessIdentity: graphDataOai,
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        },
       },
       defaultRootObject: 'index.html',
       errorResponses: [
