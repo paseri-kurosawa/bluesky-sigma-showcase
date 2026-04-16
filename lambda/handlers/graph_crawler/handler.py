@@ -684,6 +684,67 @@ def save_unified_graph_to_s3(graph: Dict, category: str) -> bool:
         return False
 
 
+def generate_hashtags_list():
+    """
+    Generate list of available hashtags by scanning S3 sigma-graph/ prefix.
+    Returns only unified_* categories (category aggregations).
+
+    Returns:
+        List of hashtag strings (e.g., ['unified_food', 'unified_anime', ...])
+    """
+    try:
+        hashtags = []
+        paginator = s3_client.get_paginator('list_objects_v2')
+        pages = paginator.paginate(Bucket=S3_BUCKET, Prefix=S3_PREFIX, Delimiter='/')
+
+        for page in pages:
+            if 'CommonPrefixes' not in page:
+                continue
+
+            for prefix_info in page['CommonPrefixes']:
+                prefix = prefix_info['Prefix']
+                # Extract hashtag name from prefix (e.g., "sigma-graph/unified_food/" -> "unified_food")
+                hashtag = prefix.replace(S3_PREFIX, '').rstrip('/')
+
+                # Only include unified_* categories
+                if hashtag.startswith('unified_'):
+                    hashtags.append(hashtag)
+
+        print(f"[HASHTAGS] Found {len(hashtags)} hashtags: {hashtags}")
+        return sorted(hashtags)
+    except Exception as e:
+        print(f"[HASHTAGS ERROR] Failed to list hashtags: {str(e)}")
+        return []
+
+
+def save_hashtags_list_to_s3(hashtags: List[str]):
+    """
+    Save hashtags list as JSON to S3 for CloudFront delivery.
+
+    Args:
+        hashtags: List of hashtag strings
+    """
+    try:
+        hashtags_data = {
+            "hashtags": hashtags,
+            "count": len(hashtags),
+            "updated_at": get_jst_now().isoformat()
+        }
+
+        s3_key = f"{S3_PREFIX}hashtags.json"
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=json.dumps(hashtags_data, ensure_ascii=False, indent=2),
+            ContentType='application/json'
+        )
+        print(f"[S3] Saved hashtags list to {s3_key}")
+        return True
+    except Exception as e:
+        print(f"[S3 ERROR] Failed to save hashtags list: {str(e)}")
+        return False
+
+
 # === Main Lambda Handler ===
 def lambda_handler(event, context):
     """
@@ -785,6 +846,15 @@ def lambda_handler(event, context):
             if unified_graph:
                 save_unified_graph_to_s3(unified_graph, category)
                 print(f"[HANDLER] Successfully saved unified graph for {category}")
+
+        # === Step 7: Generate and save hashtags list for CloudFront ===
+        print("[HANDLER] Generating hashtags list...")
+        hashtags_list = generate_hashtags_list()
+        if hashtags_list:
+            save_hashtags_list_to_s3(hashtags_list)
+            print(f"[HANDLER] Successfully saved hashtags list ({len(hashtags_list)} items)")
+        else:
+            print("[HANDLER] Warning: No hashtags found or failed to generate list")
 
         print("[HANDLER] Graph crawler completed successfully")
         return {

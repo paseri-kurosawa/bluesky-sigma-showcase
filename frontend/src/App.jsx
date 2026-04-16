@@ -448,7 +448,8 @@ export default function App() {
   useEffect(() => {
     const fetchHashtags = async () => {
       try {
-        const response = await fetch(`${apiEndpoint}/api/hashtags`);
+        const url = `https://${window.location.hostname}/sigma-graph/hashtags.json`;
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to fetch hashtags');
         const data = await response.json();
         let tags = data.hashtags || [];
@@ -461,7 +462,7 @@ export default function App() {
     };
 
     fetchHashtags();
-  }, [apiEndpoint]);
+  }, []);
 
 
   // Close modals and reset state when hashtag changes

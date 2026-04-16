@@ -25,6 +25,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       `bluesky-sigma-showcase-${cdk.Aws.ACCOUNT_ID}`
     );
 
+
     // === S3 Bucket for Frontend (Import existing bucket) ===
     const frontendBucket = s3.Bucket.fromBucketName(
       this,
@@ -141,12 +142,8 @@ export class BlueskySigmaStack extends cdk.Stack {
       },
     });
 
-    // /api/hashtags
-    const apiResource = api.root.addResource('api');
-    const hashtagsResource = apiResource.addResource('hashtags');
-    hashtagsResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
-
     // /api/user/{handle}/top-post and /api/user/{handle}/share-image
+    const apiResource = api.root.addResource('api');
     const userResource = apiResource.addResource('user');
     const handleResource = userResource.addResource('{handle}');
     const topPostResource = handleResource.addResource('top-post');
@@ -164,30 +161,22 @@ export class BlueskySigmaStack extends cdk.Stack {
 
     crawlerRule.addTarget(new targets.LambdaFunction(schedulerLambda));
 
-    // === CloudFront Distribution (Frontend) ===
-    const oai = new cloudfront.OriginAccessIdentity(this, 'FrontendOAI', {
+    // === CloudFront Origin Access Identities ===
+    const frontendOai = new cloudfront.OriginAccessIdentity(this, 'FrontendOAI', {
       comment: 'OAI for frontend bucket access',
     });
-    frontendBucket.grantRead(oai);
+    frontendBucket.grantRead(frontendOai);
 
-    // === OAI for Graph Data Bucket ===
     const graphDataOai = new cloudfront.OriginAccessIdentity(this, 'GraphDataOAI', {
       comment: 'OAI for graph data bucket access',
     });
-    // Note: grantRead may not work on imported buckets, so we add explicit bucket policy
-    graphDataBucket.addToResourcePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.CanonicalUserPrincipal(graphDataOai.canonic​alUserId)],
-        actions: ['s3:GetObject'],
-        resources: [graphDataBucket.arnForObjects('*')],
-      })
-    );
+    graphDataBucket.grantRead(graphDataOai);
+
 
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessIdentity(frontendBucket, {
-          originAccessIdentity: oai,
+          originAccessIdentity: frontendOai,
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
