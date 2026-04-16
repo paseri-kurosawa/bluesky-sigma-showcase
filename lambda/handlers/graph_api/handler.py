@@ -5,6 +5,8 @@ import base64
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
+from atproto import Client
+from atproto_client.models.app.bsky.feed.search_posts import Params as SearchParams
 
 # Patch pathlib BEFORE importing pyppeteer to prevent /home directory access
 import pathlib
@@ -34,9 +36,6 @@ JST = timezone(timedelta(hours=9))
 S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase-878311109818')
 S3_PREFIX = os.environ.get('S3_PREFIX', 'sigma-graph/')
 
-# Allowed hashtags (whitelist) - individual hashtags only
-# Category-unified graphs (unified_*) are allowed dynamically
-ALLOWED_HASHTAGS = ["おはようvtuber", "青空ごはん部", "イラスト"]
 
 
 # === Helper Functions ===
@@ -95,8 +94,8 @@ def get_graph_from_s3(s3_key: str) -> Optional[Dict]:
 
 def list_hashtags() -> list:
     """
-    List all available hashtags in S3, filtered by whitelist.
-    Returns only hashtags in ALLOWED_HASHTAGS or unified_* categories.
+    List all available hashtags in S3.
+    Returns only unified_* categories.
 
     Returns:
         List of hashtag names
@@ -116,8 +115,8 @@ def list_hashtags() -> list:
                     # Extract hashtag from prefix (e.g., "sigma-graph/おはようvtuber/" -> "おはようvtuber")
                     hashtag = prefix['Prefix'].replace(S3_PREFIX, '').rstrip('/')
                     if hashtag:
-                        # Filter by whitelist: allowed individual hashtags or unified_* categories
-                        if hashtag in ALLOWED_HASHTAGS or hashtag.startswith('unified_'):
+                        # Only allow unified_* categories
+                        if hashtag.startswith('unified_'):
                             hashtags.append(hashtag)
 
         return sorted(hashtags)
@@ -155,8 +154,8 @@ def handle_get_latest(path_parameters: Optional[Dict]) -> Dict:
             import urllib.parse
             hashtag = urllib.parse.unquote(hashtag)
 
-            # Validate hashtag (whitelist) - allow individual hashtags or unified_* categories
-            if hashtag not in ALLOWED_HASHTAGS and not hashtag.startswith('unified_'):
+            # Validate hashtag - only allow unified_* categories
+            if not hashtag.startswith('unified_'):
                 return build_response(404, {
                     "error": "Hashtag not found",
                     "hashtag": hashtag
@@ -247,6 +246,26 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
     noto_sans_jp_url = font_to_data_url(noto_sans_jp_path)
     noto_emoji_url = font_to_data_url(noto_emoji_path)
 
+    # Calculate dynamic font size based on display name length
+    name_length = len(display_name)
+    if name_length <= 10:
+        display_name_size = 60
+    elif name_length <= 25:
+        display_name_size = 45
+    else:
+        display_name_size = 32
+
+    # Calculate star emoji based on rank digits
+    rank_int = int(rank)
+    if rank_int < 10:
+        star_emoji = "⭐⭐⭐"
+    elif rank_int < 100:
+        star_emoji = "⭐⭐"
+    elif rank_int < 1000:
+        star_emoji = "⭐"
+    else:
+        star_emoji = ""
+
     # HTML template with CSS
     html_content = f"""
     <!DOCTYPE html>
@@ -270,12 +289,14 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
             body {{
                 width: 1200px;
                 height: 630px;
-                background: white;
+                background: linear-gradient(45deg, white 0%, white 70%, #0099CC 100%);
                 font-family: "Noto Sans JP", "Noto Color Emoji", sans-serif;
                 display: flex;
                 flex-direction: column;
                 justify-content: flex-start;
-                padding: 50px 30px 30px 30px;
+                padding: 50px 30px 80px 30px;
+                position: relative;
+                box-sizing: border-box;
             }}
             .container {{
                 display: flex;
@@ -296,10 +317,11 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
                 gap: 15px;
             }}
             .display-name {{
-                font-size: 60px;
+                font-size: {display_name_size}px;
                 font-weight: 900;
                 color: #000;
                 word-break: break-word;
+                margin-right: 200px;
             }}
             .handle {{
                 font-size: 32px;
@@ -315,7 +337,7 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
                 color: #3c3c3c;
             }}
             .rank {{
-                font-size: 56px;
+                font-size: 40px;
                 font-weight: 700;
                 color: #ff6b4a;
                 margin-top: 10px;
@@ -323,33 +345,55 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
             .footer {{
                 position: absolute;
                 bottom: 20px;
-                width: 100%;
-                padding: 0 30px;
+                left: 60px;
+                right: 60px;
                 display: flex;
-                justify-content: space-between;
+                justify-content: flex-end;
+                align-items: center;
+                gap: 40px;
                 font-size: 26px;
                 font-weight: 400;
                 color: #505050;
+                box-sizing: border-box;
+            }}
+            .footer-left {{
+                flex-shrink: 0;
+                text-align: right;
+                order: 3;
+            }}
+            .footer-right {{
+                flex-shrink: 0;
+                text-align: right;
+                order: 2;
+            }}
+            .logo {{
+                position: absolute;
+                top: 45px;
+                right: 45px;
+                width: 150px;
+                height: 150px;
+                object-fit: contain;
             }}
         </style>
     </head>
     <body>
+        <img class="logo" src="https://d1g3djqpjf3j38.cloudfront.net/bluesky_media_kit_logo_transparent_2.png" alt="logo" onerror="this.style.display='none'" />
         <div class="container">
             <img class="avatar" src="{avatar_url}" alt="avatar" onerror="this.style.display='none'" />
             <div class="content">
-                <div class="display-name">⭐ {display_name}</div>
+                <div class="display-name">{display_name}</div>
                 <div class="handle">@{handle}</div>
                 <div class="stats">
-                    <div>📝 Posts: {int(float(posts_count)):,}</div>
-                    <div>👥 Follows: {int(float(follows_count)):,}</div>
-                    <div>💬 Followers: {int(float(follower_count)):,}</div>
+                    <div>Posts: {int(float(posts_count)):,}</div>
+                    <div>Follows: {int(float(follows_count)):,}</div>
+                    <div>Followers: {int(float(follower_count)):,}</div>
                 </div>
-                <div class="rank">🏆 {graph_name} Rank #{rank}</div>
+                <div class="rank">{graph_name}  Rank #{rank} {star_emoji}</div>
             </div>
         </div>
         <div class="footer">
-            <div>📅 {snapshot_time}</div>
-            <div>✨ Generated by Sky Star Cluster</div>
+            <div class="footer-right">✨ Generated by Sky Star Cluster</div>
+            <div class="footer-left">{snapshot_time}</div>
         </div>
     </body>
     </html>
@@ -362,8 +406,17 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
         os.makedirs('/tmp/chromium-user-data', exist_ok=True)
         os.makedirs('/tmp/chromium-cache', exist_ok=True)
 
-        # Use pre-downloaded Chromium from image
-        chromium_path = '/opt/chromium-cache/pyppeteer/local-chromium/1181205/chrome-linux/chrome'
+        # Find Chromium dynamically (may have different version)
+        chromium_path = None
+        chromium_base = '/opt/chromium-cache/pyppeteer/local-chromium'
+        if os.path.exists(chromium_base):
+            # Find any chrome binary under local-chromium/*/chrome-linux/chrome
+            for version_dir in os.listdir(chromium_base):
+                candidate = os.path.join(chromium_base, version_dir, 'chrome-linux', 'chrome')
+                if os.path.exists(candidate):
+                    chromium_path = candidate
+                    print(f"[PUPPETEER] Found Chromium: {chromium_path}")
+                    break
 
         browser = await launch(
             executablePath=chromium_path,

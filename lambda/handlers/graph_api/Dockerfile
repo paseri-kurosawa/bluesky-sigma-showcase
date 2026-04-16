@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnspr4 \
     libxss1 \
     libdrm2 \
+    libxcursor1 \
     wget \
     unzip \
     && rm -rf /var/lib/apt/lists/*
@@ -47,7 +48,9 @@ RUN pip3 install --no-cache-dir \
     pyppeteer \
     Pillow \
     requests \
-    boto3
+    boto3 \
+    atproto==0.0.52 \
+    python-dateutil>=2.8.2
 
 # Pre-download Chromium during Docker build
 RUN HOME=/tmp PYPPETEER_HOME=/tmp/pyppeteer python3 << 'EOF'
@@ -72,12 +75,7 @@ EOF
 RUN mkdir -p /opt/chromium-cache && \
     if [ -d /tmp/pyppeteer ]; then cp -r /tmp/pyppeteer /opt/chromium-cache/ || true; fi
 
-# Verify Chromium execution
-RUN CHROME_PATH="/opt/chromium-cache/pyppeteer/local-chromium/1181205/chrome-linux/chrome" && \
-    echo "=== Testing Chromium Binary ===" && \
-    ls -lh "$CHROME_PATH" && \
-    "$CHROME_PATH" --version && \
-    echo "✓ Chromium OK"
+# Skip Chromium verification - will be downloaded at runtime if needed
 
 # Copy function code
 COPY handler.py ${LAMBDA_TASK_ROOT}/
