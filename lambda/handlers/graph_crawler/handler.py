@@ -38,6 +38,26 @@ def get_jst_now():
     return datetime.now(JST)
 
 
+def write_completion_marker(category: str, timestamp: int):
+    """Write completion marker to S3 for Scheduler polling"""
+    try:
+        marker_key = f"crawler-status/{category}-{timestamp}.complete"
+        s3_client.put_object(
+            Bucket=S3_BUCKET,
+            Key=marker_key,
+            Body=json.dumps({
+                'category': category,
+                'timestamp': timestamp,
+                'completed_at': get_jst_now().isoformat()
+            })
+        )
+        print(f"[MARKER] Wrote completion marker: {marker_key}")
+        return True
+    except Exception as e:
+        print(f"[MARKER ERROR] Failed to write completion marker: {str(e)}")
+        return False
+
+
 def rate_limited_call(func, *args, **kwargs):
     """Rate-limited API call wrapper"""
     time.sleep(1.0 / RATE_LIMIT_PER_SECOND)
@@ -855,6 +875,11 @@ def lambda_handler(event, context):
             print(f"[HANDLER] Successfully saved hashtags list ({len(hashtags_list)} items)")
         else:
             print("[HANDLER] Warning: No hashtags found or failed to generate list")
+
+        # === Step 8: Write completion marker for Scheduler ===
+        # Must use timestamp provided by Scheduler (passed in event)
+        timestamp = int(event['timestamp'])
+        write_completion_marker(category, timestamp)
 
         print("[HANDLER] Graph crawler completed successfully")
         return {

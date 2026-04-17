@@ -96,8 +96,13 @@ export class BlueskySigmaStack extends cdk.Stack {
       handler: 'handler.lambda_handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/handlers/scheduler')),
       role: lambdaExecutionRole,
-      timeout: cdk.Duration.seconds(60),
+      timeout: cdk.Duration.minutes(15),
       memorySize: 256,
+      environment: {
+        CLOUDFRONT_DISTRIBUTION_ID: '',  // Set after distribution is created
+        S3_BUCKET: graphDataBucket.bucketName,
+        S3_STATUS_PREFIX: 'crawler-status/',
+      },
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
@@ -112,13 +117,44 @@ export class BlueskySigmaStack extends cdk.Stack {
       })
     );
 
-    // === Lambda: API Endpoint (Docker Image with Chromium) ===
-    const graphApiLambda = new lambda.DockerImageFunction(this, 'GraphApiLambda', {
-      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '../../lambda/handlers/graph_api')),
+    // Permissions: S3 for status markers
+    graphDataBucket.grantReadWrite(schedulerLambda);
+
+    // Permissions: CloudFront Cache Invalidation
+    schedulerLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['cloudfront:CreateInvalidation'],
+        resources: [
+          `arn:aws:cloudfront::${cdk.Aws.ACCOUNT_ID}:distribution/*`,
+        ],
+      })
+    );
+
+    // === Lambda: Top Post API (Lightweight) ===
+    const topPostLambda = new lambda.Function(this, 'TopPostLambda', {
+      functionName: 'bluesky-sigma-top-post',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'handler.lambda_handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/handlers/top_post_api')),
       role: lambdaExecutionRole,
-      timeout: cdk.Duration.minutes(5),  // Extended for Chromium startup (Puppeteer rendering takes time)
-      memorySize: 3008,  // 3GB for Chromium + image processing
-      reservedConcurrentExecutions: 10,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 512,
+      environment: {
+        S3_BUCKET: graphDataBucket.bucketName,
+        S3_PREFIX: 'sigma-graph/',
+      },
+      layers: [dependenciesLayer],
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+    // === Lambda: Share Image API (Docker Image with Chromium) ===
+    const shareImageLambda = new lambda.DockerImageFunction(this, 'ShareImageLambda', {
+      functionName: 'bluesky-sigma-share-image',
+      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '../../lambda/handlers/share_image_api')),
+      role: lambdaExecutionRole,
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 2048,  // 2GB for Chromium + image processing
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_PREFIX: 'sigma-graph/',
@@ -127,9 +163,9 @@ export class BlueskySigmaStack extends cdk.Stack {
     });
 
     // === API Gateway ===
-    const api = new apigateway.RestApi(this, 'GraphApi', {
-      restApiName: 'bluesky-sigma-graph-api',
-      description: 'API for fetching graph data',
+    const api = new apigateway.RestApi(this, 'UserApi', {
+      restApiName: 'bluesky-sigma-user-api',
+      description: 'API for user-specific operations',
       binaryMediaTypes: ['image/png'],  // Support binary PNG images
       defaultCorsPreflightOptions: {
         allowOrigins: [
@@ -147,9 +183,9 @@ export class BlueskySigmaStack extends cdk.Stack {
     const userResource = apiResource.addResource('user');
     const handleResource = userResource.addResource('{handle}');
     const topPostResource = handleResource.addResource('top-post');
-    topPostResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
+    topPostResource.addMethod('GET', new apigateway.LambdaIntegration(topPostLambda));
     const shareImageResource = handleResource.addResource('share-image');
-    shareImageResource.addMethod('GET', new apigateway.LambdaIntegration(graphApiLambda));
+    shareImageResource.addMethod('GET', new apigateway.LambdaIntegration(shareImageLambda));
 
     // === EventBridge Rule (Hourly Schedule) ===
     const crawlerRule = new events.Rule(this, 'HourlyGraphCrawlerRule', {
@@ -201,6 +237,9 @@ export class BlueskySigmaStack extends cdk.Stack {
       ],
     });
 
+    // Set Scheduler environment variable with distribution ID
+    schedulerLambda.addEnvironment('CLOUDFRONT_DISTRIBUTION_ID', distribution.distributionId);
+
     // === Outputs ===
     new cdk.CfnOutput(this, 'GraphDataBucketName', {
       value: graphDataBucket.bucketName,
@@ -222,6 +261,11 @@ export class BlueskySigmaStack extends cdk.Stack {
       description: 'CloudFront distribution domain',
     });
 
+    new cdk.CfnOutput(this, 'CloudFrontDistributionId', {
+      value: distribution.distributionId,
+      description: 'CloudFront distribution ID for cache invalidation',
+    });
+
     new cdk.CfnOutput(this, 'SchedulerLambdaName', {
       value: schedulerLambda.functionName,
       description: 'Scheduler Lambda function name',
@@ -232,9 +276,14 @@ export class BlueskySigmaStack extends cdk.Stack {
       description: 'Graph crawler Lambda function name',
     });
 
-    new cdk.CfnOutput(this, 'GraphApiLambdaName', {
-      value: graphApiLambda.functionName,
-      description: 'Graph API Lambda function name',
+    new cdk.CfnOutput(this, 'TopPostLambdaName', {
+      value: topPostLambda.functionName,
+      description: 'Top post API Lambda function name',
+    });
+
+    new cdk.CfnOutput(this, 'ShareImageLambdaName', {
+      value: shareImageLambda.functionName,
+      description: 'Share image API Lambda function name',
     });
   }
 }
