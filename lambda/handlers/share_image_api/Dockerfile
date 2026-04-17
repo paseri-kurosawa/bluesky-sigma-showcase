@@ -22,6 +22,9 @@ RUN pip3 install --no-cache-dir -r requirements.txt && \
 # Copy function code
 COPY handler.py ${LAMBDA_TASK_ROOT}/
 
+# Copy logo
+COPY bluesky_media_kit_logo_transparent_2.png ${LAMBDA_TASK_ROOT}/
+
 # Copy custom fonts (NotoSansJP + NotoColorEmoji already in fonts/ directory)
 RUN mkdir -p /opt/python/fonts
 COPY fonts/* /opt/python/fonts/

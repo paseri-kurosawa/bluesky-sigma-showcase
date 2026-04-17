@@ -43,6 +43,18 @@ def download_and_encode_image(url: str) -> str:
         return ""
 
 
+def load_logo_from_file() -> str:
+    """Load logo from local file and return as base64 data URI."""
+    try:
+        logo_path = '/var/task/bluesky_media_kit_logo_transparent_2.png'
+        with open(logo_path, 'rb') as f:
+            img_b64 = base64.b64encode(f.read()).decode('utf-8')
+        return f"data:image/png;base64,{img_b64}"
+    except Exception as e:
+        print(f"[WARN] Failed to load logo from file: {str(e)}")
+        return ""
+
+
 def generate_share_image(display_name: str, handle: str, avatar_url: str,
                         follower_count: str, follows_count: str, posts_count: str,
                         rank: str, graph_name: str, snapshot_time: str) -> bytes:
@@ -68,12 +80,26 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
     avatar_data_uri = download_and_encode_image(avatar_url) if avatar_url else ""
     avatar_img_tag = f'<img class="avatar" src="{avatar_data_uri}" alt="avatar" />' if avatar_data_uri else ''
 
+    logo_data_uri = load_logo_from_file()
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
         <style>
+            @page {{
+                size: 1200px 630px;
+                margin: 0;
+            }}
+            @font-face {{
+                font-family: "Noto Sans JP";
+                src: url("file:///opt/python/fonts/NotoSansJP-VariableFont_wght.ttf");
+            }}
+            @font-face {{
+                font-family: "Noto Color Emoji";
+                src: url("file:///opt/python/fonts/NotoColorEmoji-Regular.ttf");
+            }}
             * {{
                 margin: 0;
                 padding: 0;
@@ -170,7 +196,7 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
         </style>
     </head>
     <body>
-        <img class="logo" src="https://d1g3djqpjf3j38.cloudfront.net/bluesky_media_kit_logo_transparent_2.png" alt="logo" />
+        <img class="logo" src="{logo_data_uri}" alt="logo" />
         <div class="container">
             {avatar_img_tag}
             <div class="content">
@@ -200,7 +226,7 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
         html.write_pdf(pdf_bytes)
         pdf_bytes.seek(0)
 
-        images = pdf2image.convert_from_bytes(pdf_bytes.getvalue())
+        images = pdf2image.convert_from_bytes(pdf_bytes.getvalue(), dpi=100)
         png_output = BytesIO()
         images[0].save(png_output, format='PNG')
         png_data = png_output.getvalue()
