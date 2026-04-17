@@ -140,6 +140,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       role: lambdaExecutionRole,
       timeout: cdk.Duration.seconds(30),
       memorySize: 512,
+      reservedConcurrentExecutions: 10,  // Limit to 10 concurrent executions
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_PREFIX: 'sigma-graph/',
@@ -155,6 +156,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       role: lambdaExecutionRole,
       timeout: cdk.Duration.minutes(5),
       memorySize: 2048,  // 2GB for Chromium + image processing
+      reservedConcurrentExecutions: 10,  // Limit to 10 concurrent executions
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_PREFIX: 'sigma-graph/',
