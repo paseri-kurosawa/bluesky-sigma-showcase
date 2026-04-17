@@ -225,6 +225,15 @@ export class BlueskySigmaStack extends cdk.Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         },
+        '/api/*': {
+          origin: new origins.HttpOrigin(cdk.Fn.select(2, cdk.Fn.split('/', api.url)), {
+            originPath: '/prod',
+            readTimeout: cdk.Duration.seconds(60),
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+        },
       },
       defaultRootObject: 'index.html',
       errorResponses: [
