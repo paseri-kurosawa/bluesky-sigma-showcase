@@ -538,7 +538,7 @@ export default function App() {
         avatar: node.avatar,
         lastPostAt: node.lastPostAt,
         hashtags: node.hashtags || [],
-        size: Math.max(2, Math.min(8, (node.followersCount || 0) / 100)),
+        size: Math.max(2, Math.min(10, (node.followersCount || 0) / 200)),
         color: nodeColor,
         x: Math.random(),
         y: Math.random(),

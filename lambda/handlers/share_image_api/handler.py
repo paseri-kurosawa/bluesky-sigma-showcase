@@ -108,12 +108,12 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
             body {{
                 width: 1200px;
                 height: 630px;
-                background: linear-gradient(45deg, white 0%, white 70%, #0099CC 100%);
+                background: linear-gradient(45deg, white 0%, white 70%, #0066FF 100%);
                 font-family: "Noto Sans JP", "Noto Color Emoji", sans-serif;
                 display: flex;
                 flex-direction: column;
                 justify-content: flex-start;
-                padding: 50px 30px 80px 30px;
+                padding: 60px 30px 80px 30px;
                 position: relative;
                 box-sizing: border-box;
             }}
