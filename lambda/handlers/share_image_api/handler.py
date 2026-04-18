@@ -59,10 +59,10 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
                         follower_count: str, follows_count: str, posts_count: str,
                         rank: str, graph_name: str, snapshot_time: str) -> bytes:
     """Generate share image using WeasyPrint."""
-    name_length = len(display_name)
-    if name_length <= 10:
+    name_bytes = len(display_name.encode('utf-8'))
+    if name_bytes <= 30:
         display_name_size = 60
-    elif name_length <= 25:
+    elif name_bytes <= 54:
         display_name_size = 45
     else:
         display_name_size = 32
@@ -141,6 +141,8 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
                 color: #000;
                 word-break: break-word;
                 margin-right: 200px;
+                margin-bottom: 20px;
+                padding-bottom: 20px;
             }}
             .handle {{
                 font-size: 32px;
