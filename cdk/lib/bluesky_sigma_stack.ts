@@ -155,7 +155,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '../../lambda/handlers/share_image_api')),
       role: lambdaExecutionRole,
       timeout: cdk.Duration.minutes(5),
-      memorySize: 2048,  // 2GB for Chromium + image processing
+      memorySize: 3008,  // Max CPU (2 vCPU) for faster image processing
       reservedConcurrentExecutions: 10,  // Limit to 10 concurrent executions
       environment: {
         S3_BUCKET: graphDataBucket.bucketName,
