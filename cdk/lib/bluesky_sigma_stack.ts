@@ -164,6 +164,22 @@ export class BlueskySigmaStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
+    // === Lambda: OGP Image API (Docker Image with Chromium) ===
+    const ogpImageLambda = new lambda.DockerImageFunction(this, 'OgpImageLambda', {
+      functionName: 'bluesky-sigma-ogp-image',
+      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '../../lambda/handlers/ogp_image_api')),
+      role: lambdaExecutionRole,
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 2048,
+      reservedConcurrentExecutions: 10,
+      environment: {
+        S3_BUCKET: graphDataBucket.bucketName,
+        S3_PREFIX: 'sigma-graph/',
+      },
+      logRetention: logs.RetentionDays.ONE_MONTH,
+    });
+
+
     // === API Gateway ===
     const api = new apigateway.RestApi(this, 'UserApi', {
       restApiName: 'bluesky-sigma-user-api',
@@ -175,10 +191,11 @@ export class BlueskySigmaStack extends cdk.Stack {
           'http://localhost:3000',                   // Development
           'http://localhost:5173',                   // Vite dev server
         ],
-        allowMethods: ['GET', 'OPTIONS'],
+        allowMethods: ['GET', 'POST', 'OPTIONS'],
         allowHeaders: ['Content-Type'],
       },
     });
+
 
     // /api/user/{handle}/top-post and /api/user/{handle}/share-image
     const apiResource = api.root.addResource('api');
@@ -188,6 +205,11 @@ export class BlueskySigmaStack extends cdk.Stack {
     topPostResource.addMethod('GET', new apigateway.LambdaIntegration(topPostLambda));
     const shareImageResource = handleResource.addResource('share-image');
     shareImageResource.addMethod('GET', new apigateway.LambdaIntegration(shareImageLambda));
+
+    // /api/ogp/generate
+    const ogpResource = apiResource.addResource('ogp');
+    const ogpGenerateResource = ogpResource.addResource('generate');
+    ogpGenerateResource.addMethod('POST', new apigateway.LambdaIntegration(ogpImageLambda));
 
     // === EventBridge Rule (Hourly Schedule) ===
     const crawlerRule = new events.Rule(this, 'HourlyGraphCrawlerRule', {
@@ -210,6 +232,64 @@ export class BlueskySigmaStack extends cdk.Stack {
     });
     graphDataBucket.grantRead(graphDataOai);
 
+    // CloudFront Function: viewer-request — intercept crawlers and return synthetic OGP HTML
+    const ogpCrawlerFunction = new cloudfront.Function(this, 'OgpCrawlerFunction', {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var request = event.request;
+  var qs = request.querystring;
+  var headers = request.headers;
+
+  var handle = qs.handle ? qs.handle.value : '';
+  var network = qs.network ? qs.network.value : '';
+
+  if (!handle || !network) {
+    return request;
+  }
+
+  var ua = headers['user-agent'] ? headers['user-agent'].value.toLowerCase() : '';
+  var isCrawler = (
+    ua.indexOf('twitterbot') !== -1 ||
+    ua.indexOf('facebookexternalhit') !== -1 ||
+    ua.indexOf('linkedinbot') !== -1 ||
+    ua.indexOf('whatsapp') !== -1 ||
+    ua.indexOf('bluesky') !== -1 ||
+    ua.indexOf('atproto') !== -1 ||
+    ua.indexOf('bingbot') !== -1 ||
+    ua.indexOf('yandex') !== -1 ||
+    ua.indexOf('slurp') !== -1
+  );
+
+  if (!isCrawler) {
+    return request;
+  }
+
+  var ogImageUrl = 'https://d1g3djqpjf3j38.cloudfront.net/ogp/' + handle + '/' + network + '.png';
+  var pageUrl = 'https://d1g3djqpjf3j38.cloudfront.net/?handle=' + handle + '&network=' + network;
+
+  var body = '<!DOCTYPE html><html lang="ja"><head>'
+    + '<meta charset="UTF-8"/>'
+    + '<meta property="og:title" content="Sky Star Cluster - ' + handle + '"/>'
+    + '<meta property="og:description" content="Bluesky ネットワーク可視化"/>'
+    + '<meta property="og:type" content="website"/>'
+    + '<meta property="og:url" content="' + pageUrl + '"/>'
+    + '<meta property="og:image" content="' + ogImageUrl + '"/>'
+    + '<meta name="twitter:card" content="summary_large_image"/>'
+    + '<meta name="twitter:image" content="' + ogImageUrl + '"/>'
+    + '</head><body></body></html>';
+
+  return {
+    statusCode: 200,
+    statusDescription: 'OK',
+    headers: {
+      'content-type': { value: 'text/html; charset=utf-8' },
+      'cache-control': { value: 'no-cache, no-store' }
+    },
+    body: body
+  };
+}
+`),
+    });
 
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultBehavior: {
@@ -218,8 +298,39 @@ export class BlueskySigmaStack extends cdk.Stack {
         }),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        functionAssociations: [{
+          function: ogpCrawlerFunction,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
       },
+      defaultRootObject: 'index.html',
       additionalBehaviors: {
+        '/src/*': {
+          origin: S3BucketOrigin.withOriginAccessIdentity(frontendBucket, {
+            originAccessIdentity: frontendOai,
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        },
+        '/ogp/*': {
+          origin: S3BucketOrigin.withOriginAccessIdentity(graphDataBucket, {
+            originAccessIdentity: graphDataOai,
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: new cloudfront.CachePolicy(this, 'OgpCachePolicy', {
+            cachePolicyName: 'ogp-immutable',
+            minTtl: cdk.Duration.days(365),
+            defaultTtl: cdk.Duration.days(365),
+            maxTtl: cdk.Duration.days(365),
+            headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+            queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+            cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+            enableAcceptEncodingGzip: true,
+            enableAcceptEncodingBrotli: true,
+          }),
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          compress: true,
+        },
         '/sigma-graph/*': {
           origin: S3BucketOrigin.withOriginAccessIdentity(graphDataBucket, {
             originAccessIdentity: graphDataOai,
@@ -227,17 +338,7 @@ export class BlueskySigmaStack extends cdk.Stack {
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         },
-        '/api/*': {
-          origin: new origins.HttpOrigin(cdk.Fn.select(2, cdk.Fn.split('/', api.url)), {
-            originPath: '/prod',
-            readTimeout: cdk.Duration.seconds(60),
-          }),
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        },
       },
-      defaultRootObject: 'index.html',
       errorResponses: [
         {
           httpStatus: 404,
@@ -250,6 +351,7 @@ export class BlueskySigmaStack extends cdk.Stack {
 
     // Set Scheduler environment variable with distribution ID
     schedulerLambda.addEnvironment('CLOUDFRONT_DISTRIBUTION_ID', distribution.distributionId);
+
 
     // === Outputs ===
     new cdk.CfnOutput(this, 'GraphDataBucketName', {
@@ -295,6 +397,11 @@ export class BlueskySigmaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ShareImageLambdaName', {
       value: shareImageLambda.functionName,
       description: 'Share image API Lambda function name',
+    });
+
+    new cdk.CfnOutput(this, 'OgpImageLambdaName', {
+      value: ogpImageLambda.functionName,
+      description: 'OGP image API Lambda function name',
     });
   }
 }

@@ -10,6 +10,23 @@
   <meta property="og:description" content="Bluesky の日本語圏ユーザーネットワークを可視化するツール。フォロー関係をグラフで表示します。" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://d1g3djqpjf3j38.cloudfront.net" />
+  <meta property="og:image" content="https://d1g3djqpjf3j38.cloudfront.net/ogp/default.png" id="og-image-meta" />
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const handle = params.get('handle');
+      const network = params.get('network');
+
+      if (handle && network) {
+        const ogImageUrl = `https://d1g3djqpjf3j38.cloudfront.net/ogp/${handle}/${network}.png`;
+        const ogMetaTag = document.getElementById('og-image-meta');
+        if (ogMetaTag) {
+          ogMetaTag.setAttribute('content', ogImageUrl);
+        }
+        console.log('[OGP-HTML] Set og:image to:', ogImageUrl);
+      }
+    })();
+  </script>
   <style>
     * {
       margin: 0;

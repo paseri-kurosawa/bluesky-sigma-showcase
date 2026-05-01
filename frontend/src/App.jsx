@@ -31,6 +31,8 @@ export default function App() {
   const [topPost, setTopPost] = useState(null);
   const [topPostLoading, setTopPostLoading] = useState(false);
   const [shareImageLoading, setShareImageLoading] = useState(false);
+  const [ogpReady, setOgpReady] = useState(false);
+  const [ogpImageUrl, setOgpImageUrl] = useState('');
   const [tabCooldown, setTabCooldown] = useState(0);
   const [autoSelectHandle, setAutoSelectHandle] = useState(null);
 
@@ -290,6 +292,8 @@ export default function App() {
   useEffect(() => {
     setRecommendedUsers([]);
     setTopPost(null);
+    setOgpReady(false);
+    setOgpImageUrl('');
     setPanelTab('info');
   }, [selectedNode?.id]);
 
@@ -1423,107 +1427,130 @@ export default function App() {
                       >
                         コピー
                       </button>
-                      <button
-                        onClick={async () => {
-                          setShareImageLoading(true);
-                          try {
-                            // Format snapshot timestamp: yyyy/mm/dd hh:mm:ss
-                            const generatedAt = graphData?.metadata?.timestamp || graphData?.metadata?.generatedAt;
-                            let snapshotTime = '';
-                            if (generatedAt) {
-                              const dt = new Date(generatedAt);
-                              const yyyy = dt.getFullYear();
-                              const mm = String(dt.getMonth() + 1).padStart(2, '0');
-                              const dd = String(dt.getDate()).padStart(2, '0');
-                              const hh = String(dt.getHours()).padStart(2, '0');
-                              const min = String(dt.getMinutes()).padStart(2, '0');
-                              const ss = String(dt.getSeconds()).padStart(2, '0');
-                              snapshotTime = `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`;
-                            }
+                      {!ogpReady ? (
+                        <button
+                          onClick={async () => {
+                            setShareImageLoading(true);
+                            try {
+                              const generatedAt = graphData?.metadata?.timestamp || graphData?.metadata?.generatedAt;
+                              let snapshotTime = '';
+                              if (generatedAt) {
+                                const dt = new Date(generatedAt);
+                                snapshotTime = `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}:${String(dt.getSeconds()).padStart(2, '0')}`;
+                              }
 
-                            const params = new URLSearchParams({
-                              displayName: selectedNode.displayName || 'Unknown',
-                              avatarUrl: selectedNode.avatar || '',
-                              followerCount: String(selectedNode.followersCount || 0),
-                              followsCount: String(selectedNode.followsCount || 0),
-                              postsCount: String(selectedNode.postsCount || 0),
-                              rank: String(rank || 'N/A'),
-                              graphName: graphName || 'Network',
-                              snapshotTime: snapshotTime || 'Unknown'
-                            });
-
-                            // Debug log
-                            console.log('[SHARE IMAGE] Selected Node:', selectedNode);
-                            console.log('[SHARE IMAGE] Params:', {
-                              displayName: selectedNode.displayName,
-                              followersCount: selectedNode.followersCount,
-                              followsCount: selectedNode.followsCount,
-                              postsCount: selectedNode.postsCount,
-                              snapshotTime: snapshotTime
-                            });
-
-                            const apiUrl = `${apiEndpoint}/api/user/${selectedNode.accountId}/share-image?${params.toString()}`;
-
-                            // Fetch base64 image
-                            const response = await fetch(apiUrl);
-                            const base64Data = await response.text();
-
-                            // Convert base64 to Blob
-                            const binaryString = atob(base64Data);
-                            const bytes = new Uint8Array(binaryString.length);
-                            for (let i = 0; i < binaryString.length; i++) {
-                              bytes[i] = binaryString.charCodeAt(i);
-                            }
-                            const blob = new Blob([bytes], { type: 'image/png' });
-
-                            // Create File object
-                            const file = new File([blob], `${selectedNode.displayName}-rank${rank}.png`, {
-                              type: 'image/png'
-                            });
-
-                            // Share via Web Share API
-                            if (navigator.share) {
-                              const bskyProfileUrl = `https://bsky.app/profile/${selectedNode.accountId}`;
-                              const shareText = `プロフィール: ${bskyProfileUrl}\nノード: ${shareUrl}\nGenerated by #SkyStarCluster`;
-                              await navigator.share({
-                                title: selectedNode.displayName,
-                                text: shareText,
-                                files: [file]
+                              const params = new URLSearchParams({
+                                displayName: selectedNode.displayName || 'Unknown',
+                                avatarUrl: selectedNode.avatar || '',
+                                followerCount: String(selectedNode.followersCount || 0),
+                                followsCount: String(selectedNode.followsCount || 0),
+                                postsCount: String(selectedNode.postsCount || 0),
+                                rank: String(rank || 'N/A'),
+                                graphName: graphName || 'Network',
+                                snapshotTime: snapshotTime || 'Unknown',
+                                handle: selectedNode.accountId,
+                                network: selectedHashtag
                               });
-                            } else {
-                              // Fallback: download
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `${selectedNode.displayName}-rank${rank}.png`;
-                              a.click();
-                              URL.revokeObjectURL(url);
+
+                              const ogpUrl = `${apiEndpoint}/api/ogp/generate?${params.toString()}`;
+                              const ogpResponse = await fetch(ogpUrl, { method: 'POST' });
+                              const ogpData = await ogpResponse.json();
+
+                              if (ogpData.status === 'created' || ogpData.status === 'exists') {
+                                setOgpImageUrl(ogpData.url);
+                                setOgpReady(true);
+                              } else {
+                                alert('OGP画像の生成に失敗しました');
+                              }
+                            } catch (error) {
+                              console.error('OGP生成エラー:', error);
+                              alert('OGP画像生成に失敗しました。もう一度お試しください。');
+                            } finally {
+                              setShareImageLoading(false);
                             }
-                          } catch (error) {
-                            console.error('画像生成エラー:', error);
-                            alert('画像生成に失敗しました。タイムアウトの可能性があります。もう一度お試しください。');
-                          } finally {
-                            setShareImageLoading(false);
-                          }
-                        }}
-                        disabled={shareImageLoading}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          background: '#1DA1F2',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '0.9rem',
-                          fontWeight: 600,
-                          cursor: shareImageLoading ? 'not-allowed' : 'pointer',
-                          marginTop: '0.5rem',
-                          opacity: shareImageLoading ? 0.6 : 1,
-                          transition: 'opacity 0.2s',
-                          width: '100%'
-                        }}
-                      >
-                        {shareImageLoading ? '画像生成中' : '画像でシェアする'}
-                      </button>
+                          }}
+                          disabled={shareImageLoading}
+                          style={{
+                            padding: '0.6rem 1rem',
+                            background: '#1DA1F2',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: shareImageLoading ? 'not-allowed' : 'pointer',
+                            marginTop: '0.5rem',
+                            opacity: shareImageLoading ? 0.6 : 1,
+                            width: '100%'
+                          }}
+                        >
+                          {shareImageLoading ? 'OGP画像生成中...' : 'OGP画像を生成'}
+                        </button>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.5rem' }}>
+                          <button
+                            onClick={() => {
+                              const postText = `${selectedNode.displayName || selectedNode.accountId}のBluesky Network Info\nCreated by #SkyStarCluster\n${shareUrl}`;
+                              const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(postText)}`;
+                              window.open(twitterUrl, '_blank');
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: '#000',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              width: '100%'
+                            }}
+                          >
+                            Xにシェア
+                          </button>
+                          <button
+                            onClick={() => {
+                              const postText = `${selectedNode.displayName || selectedNode.accountId}のBluesky Network Info\nCreated by #SkyStarCluster\n${shareUrl}`;
+                              const bskyUrl = `https://bsky.app/intent/compose?text=${encodeURIComponent(postText)}`;
+                              window.open(bskyUrl, '_blank');
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: '#0085ff',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              width: '100%'
+                            }}
+                          >
+                            Blueskyにシェア
+                          </button>
+                          <button
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = ogpImageUrl;
+                              link.download = `${selectedNode.accountId}_${selectedHashtag}.png`;
+                              link.click();
+                            }}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: '#555',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              width: '100%'
+                            }}
+                          >
+                            画像をDL
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
