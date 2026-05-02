@@ -751,7 +751,7 @@ export default function App() {
               </div>
               <div className="info-modal-content">
                 <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                  <img src="/logo.png" alt="Sky Star Cluster" style={{ width: '120px', height: '120px', objectFit: 'contain', borderRadius: '16px' }} />
+                  <img src="/skystarcluster_logo.png" alt="Sky Star Cluster" style={{ width: '120px', height: '120px', objectFit: 'contain', borderRadius: '16px' }} />
                 </div>
                 <p><strong>このサイトは何？</strong></p>
                 <p><a href="https://bsky.app/" target="_blank" rel="noopener noreferrer">Bluesky</a>の日本語圏ユーザーネットワークを可視化するツールです。<br />選択したハッシュタグに関連するユーザーをグラフとして表示します。<br />反映されている情報は必ずしも最新ではありません。</p>
@@ -1390,7 +1390,7 @@ export default function App() {
                     : `#${selectedHashtag}`;
 
                   // Generate share URL
-                  const shareUrl = `https://d1g3djqpjf3j38.cloudfront.net/?handle=${selectedNode.accountId}&network=${selectedHashtag}${ogpDate ? `&t=${ogpDate}` : ''}`;
+                  const shareUrl = `https://skystarcluster.social/?handle=${selectedNode.accountId}&network=${selectedHashtag}${ogpDate ? `&t=${ogpDate}` : ''}`;
 
                   // Generate share text
                   const today = new Date();

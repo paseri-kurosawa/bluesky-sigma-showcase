@@ -298,7 +298,7 @@ async def generate_share_image_with_puppeteer(display_name: str, handle: str, av
         </style>
     </head>
     <body>
-        <img class="logo" src="https://d1g3djqpjf3j38.cloudfront.net/bluesky_media_kit_logo_transparent_2.png" alt="logo" onerror="this.style.display='none'" />
+        <img class="logo" src="https://skystarcluster.social/skystarcluster_logo.png" alt="logo" onerror="this.style.display='none'" />
         <div class="container">
             <img class="avatar" src="{avatar_url}" alt="avatar" onerror="this.style.display='none'" />
             <div class="content">

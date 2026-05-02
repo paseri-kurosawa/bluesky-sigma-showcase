@@ -49,7 +49,7 @@ def download_and_encode_image(url: str) -> str:
 
 def load_logo_from_file() -> str:
     try:
-        logo_path = '/var/task/bluesky_media_kit_logo_transparent_2.png'
+        logo_path = '/var/task/skystarcluster_logo.png'
         with open(logo_path, 'rb') as f:
             img_b64 = base64.b64encode(f.read()).decode('utf-8')
         return f"data:image/png;base64,{img_b64}"
@@ -324,7 +324,7 @@ def handle_generate_ogp_image(query_params: Dict) -> Dict:
         return build_response(200, {
             "status": "created",
             "path": s3_path,
-            "url": f"https://d1g3djqpjf3j38.cloudfront.net{s3_path}"
+            "url": f"https://skystarcluster.social{s3_path}"
         })
 
     except Exception as e:

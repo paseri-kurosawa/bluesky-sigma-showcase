@@ -3,14 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32" />
+  <link rel="icon" type="image/png" href="/favicon-192.png" sizes="192x192" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <title>Sky Star Cluster - Bluesky ユーザーネットワーク可視化ツール</title>
   <meta name="description" content="Bluesky の日本語圏ユーザーネットワークを可視化するツール。フォロー関係をグラフで表示し、ネットワークの影響度ランキングを確認できます。" />
   <meta name="keywords" content="Bluesky, ネットワーク, グラフ, 可視化, SNS" />
   <meta property="og:title" content="Sky Star Cluster - Bluesky ユーザーネットワーク可視化" />
   <meta property="og:description" content="Bluesky の日本語圏ユーザーネットワークを可視化するツール。フォロー関係をグラフで表示します。" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://d1g3djqpjf3j38.cloudfront.net" />
-  <meta property="og:image" content="https://d1g3djqpjf3j38.cloudfront.net/ogp/default.png" id="og-image-meta" />
+  <meta property="og:url" content="https://skystarcluster.social" />
+  <meta property="og:image" content="https://skystarcluster.social/ogp/default.png" id="og-image-meta" />
   <script>
     (function() {
       const params = new URLSearchParams(window.location.search);
@@ -18,7 +21,7 @@
       const network = params.get('network');
 
       if (handle && network) {
-        const ogImageUrl = `https://d1g3djqpjf3j38.cloudfront.net/ogp/${handle}/${network}.png`;
+        const ogImageUrl = `https://skystarcluster.social/ogp/${handle}/${network}.png`;
         const ogMetaTag = document.getElementById('og-image-meta');
         if (ogMetaTag) {
           ogMetaTag.setAttribute('content', ogImageUrl);

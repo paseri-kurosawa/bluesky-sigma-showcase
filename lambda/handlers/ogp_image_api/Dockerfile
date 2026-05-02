@@ -20,7 +20,7 @@ RUN fc-cache -f -v
 
 # Copy function code and assets
 COPY handler.py ${LAMBDA_TASK_ROOT}/
-COPY bluesky_media_kit_logo_transparent_2.png ${LAMBDA_TASK_ROOT}/
+COPY skystarcluster_logo.png ${LAMBDA_TASK_ROOT}/
 
 ENTRYPOINT [ "python", "-m", "awslambdaric" ]
 CMD [ "handler.lambda_handler" ]

@@ -8,6 +8,9 @@ import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as targets_r53 from 'aws-cdk-lib/aws-route53-targets';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -17,6 +20,11 @@ import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 export class BlueskySigmaStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // === Tags for Cost Allocation ===
+    cdk.Tags.of(this).add('Project', 'sigma');
+    cdk.Tags.of(this).add('Environment', 'production');
+    cdk.Tags.of(this).add('CostCenter', 'bluesky-showcase');
 
     // === S3 Bucket for Graph Data (Import existing bucket) ===
     const graphDataBucket = s3.Bucket.fromBucketName(
@@ -86,7 +94,7 @@ export class BlueskySigmaStack extends cdk.Stack {
         S3_PREFIX: 'sigma-graph/',
       },
       layers: [dependenciesLayer],
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
     // === Lambda: Scheduler ===
@@ -103,7 +111,7 @@ export class BlueskySigmaStack extends cdk.Stack {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_STATUS_PREFIX: 'crawler-status/',
       },
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
     // Permissions: Allow Scheduler to invoke Graph Crawler
@@ -146,7 +154,7 @@ export class BlueskySigmaStack extends cdk.Stack {
         S3_PREFIX: 'sigma-graph/',
       },
       layers: [dependenciesLayer],
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
     // === Lambda: OGP Image API (Docker Image with Chromium) ===
@@ -161,7 +169,7 @@ export class BlueskySigmaStack extends cdk.Stack {
         S3_BUCKET: graphDataBucket.bucketName,
         S3_PREFIX: 'sigma-graph/',
       },
-      logRetention: logs.RetentionDays.ONE_MONTH,
+      logRetention: logs.RetentionDays.ONE_WEEK,
     });
 
 
@@ -172,7 +180,7 @@ export class BlueskySigmaStack extends cdk.Stack {
       binaryMediaTypes: ['image/png'],  // Support binary PNG images
       defaultCorsPreflightOptions: {
         allowOrigins: [
-          'https://d1g3djqpjf3j38.cloudfront.net',  // Production CloudFront domain
+          'https://skystarcluster.social',  // Production CloudFront domain
           'http://localhost:3000',                   // Development
           'http://localhost:5173',                   // Vite dev server
         ],
@@ -249,9 +257,9 @@ function handler(event) {
 
   var t = qs.t ? qs.t.value : '';
   var ogImageUrl = t
-    ? 'https://d1g3djqpjf3j38.cloudfront.net/ogp/' + handle + '/' + network + '/' + t + '.png'
-    : 'https://d1g3djqpjf3j38.cloudfront.net/ogp/' + handle + '/' + network + '.png';
-  var pageUrl = 'https://d1g3djqpjf3j38.cloudfront.net/?handle=' + handle + '&network=' + network + (t ? '&t=' + t : '');
+    ? 'https://skystarcluster.social/ogp/' + handle + '/' + network + '/' + t + '.png'
+    : 'https://skystarcluster.social/ogp/' + handle + '/' + network + '.png';
+  var pageUrl = 'https://skystarcluster.social/?handle=' + handle + '&network=' + network + (t ? '&t=' + t : '');
 
   var body = '<!DOCTYPE html><html lang="ja"><head>'
     + '<meta charset="UTF-8"/>'
@@ -277,7 +285,20 @@ function handler(event) {
 `),
     });
 
+    // === Route 53 Hosted Zone (import registrar-created zone) ===
+    const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, 'SkyStarClusterZone', {
+      hostedZoneId: 'Z069514020F6S0I03SCZW',
+      zoneName: 'skystarcluster.social',
+    });
+
+    // === ACM Certificate (already issued in us-east-1) ===
+    const certificate = acm.Certificate.fromCertificateArn(this, 'SkyStarClusterCert',
+      'arn:aws:acm:us-east-1:878311109818:certificate/f8d175f2-1daa-4bc8-9bbb-704fb1a0429b'
+    );
+
     const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
+      domainNames: ['skystarcluster.social'],
+      certificate,
       defaultBehavior: {
         origin: S3BucketOrigin.withOriginAccessIdentity(frontendBucket, {
           originAccessIdentity: frontendOai,
@@ -338,6 +359,13 @@ function handler(event) {
     // Set Scheduler environment variable with distribution ID
     schedulerLambda.addEnvironment('CLOUDFRONT_DISTRIBUTION_ID', distribution.distributionId);
 
+    // === Route 53 Alias Record (CloudFront) ===
+    new route53.ARecord(this, 'SkyStarClusterAliasRecord', {
+      zone: hostedZone,
+      target: route53.RecordTarget.fromAlias(new targets_r53.CloudFrontTarget(distribution)),
+      recordName: 'skystarcluster.social',
+    });
+
 
     // === Outputs ===
     new cdk.CfnOutput(this, 'GraphDataBucketName', {
@@ -383,6 +411,11 @@ function handler(event) {
     new cdk.CfnOutput(this, 'OgpImageLambdaName', {
       value: ogpImageLambda.functionName,
       description: 'OGP image API Lambda function name',
+    });
+
+    new cdk.CfnOutput(this, 'CustomDomainName', {
+      value: 'skystarcluster.social',
+      description: 'Custom domain name for CloudFront',
     });
   }
 }
