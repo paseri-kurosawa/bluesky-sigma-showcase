@@ -264,13 +264,16 @@ function handler(event) {
     return request;
   }
 
-  var ogImageUrl = 'https://d1g3djqpjf3j38.cloudfront.net/ogp/' + handle + '/' + network + '.png';
-  var pageUrl = 'https://d1g3djqpjf3j38.cloudfront.net/?handle=' + handle + '&network=' + network;
+  var t = qs.t ? qs.t.value : '';
+  var ogImageUrl = t
+    ? 'https://d1g3djqpjf3j38.cloudfront.net/ogp/' + handle + '/' + network + '/' + t + '.png'
+    : 'https://d1g3djqpjf3j38.cloudfront.net/ogp/' + handle + '/' + network + '.png';
+  var pageUrl = 'https://d1g3djqpjf3j38.cloudfront.net/?handle=' + handle + '&network=' + network + (t ? '&t=' + t : '');
 
   var body = '<!DOCTYPE html><html lang="ja"><head>'
     + '<meta charset="UTF-8"/>'
     + '<meta property="og:title" content="Sky Star Cluster - ' + handle + '"/>'
-    + '<meta property="og:description" content="Bluesky ネットワーク可視化"/>'
+    + '<meta property="og:description" content="Bluesky ネットワーク可視化ツール"/>'
     + '<meta property="og:type" content="website"/>'
     + '<meta property="og:url" content="' + pageUrl + '"/>'
     + '<meta property="og:image" content="' + ogImageUrl + '"/>'

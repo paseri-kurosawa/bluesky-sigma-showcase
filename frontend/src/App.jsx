@@ -33,6 +33,7 @@ export default function App() {
   const [shareImageLoading, setShareImageLoading] = useState(false);
   const [ogpReady, setOgpReady] = useState(false);
   const [ogpImageUrl, setOgpImageUrl] = useState('');
+  const [ogpDate, setOgpDate] = useState('');
   const [tabCooldown, setTabCooldown] = useState(0);
   const [autoSelectHandle, setAutoSelectHandle] = useState(null);
 
@@ -749,6 +750,9 @@ export default function App() {
                 </button>
               </div>
               <div className="info-modal-content">
+                <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                  <img src="/logo.png" alt="Sky Star Cluster" style={{ width: '120px', height: '120px', objectFit: 'contain', borderRadius: '16px' }} />
+                </div>
                 <p><strong>このサイトは何？</strong></p>
                 <p><a href="https://bsky.app/" target="_blank" rel="noopener noreferrer">Bluesky</a>の日本語圏ユーザーネットワークを可視化するツールです。<br />選択したハッシュタグに関連するユーザーをグラフとして表示します。<br />反映されている情報は必ずしも最新ではありません。</p>
 
@@ -1386,7 +1390,7 @@ export default function App() {
                     : `#${selectedHashtag}`;
 
                   // Generate share URL
-                  const shareUrl = `https://d1g3djqpjf3j38.cloudfront.net/?handle=${selectedNode.accountId}&network=${selectedHashtag}`;
+                  const shareUrl = `https://d1g3djqpjf3j38.cloudfront.net/?handle=${selectedNode.accountId}&network=${selectedHashtag}${ogpDate ? `&t=${ogpDate}` : ''}`;
 
                   // Generate share text
                   const today = new Date();
@@ -1458,6 +1462,10 @@ export default function App() {
 
                               if (ogpData.status === 'created' || ogpData.status === 'exists') {
                                 setOgpImageUrl(ogpData.url);
+                                const tsMatch = ogpData.url.match(/\/(\d+)\.png/);
+                                if (tsMatch) {
+                                  setOgpDate(tsMatch[1]);
+                                }
                                 setOgpReady(true);
                               } else {
                                 alert('OGP画像の生成に失敗しました');

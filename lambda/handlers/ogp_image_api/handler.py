@@ -251,22 +251,24 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
         raise
 
 
-def check_s3_exists(handle: str, network: str) -> bool:
-    key = f"ogp/{handle}/{network}.png"
+def delete_old_images(handle: str, network: str):
+    prefix = f"ogp/{handle}/{network}/"
     try:
-        s3_client.head_object(Bucket=S3_BUCKET, Key=key)
-        print(f"[OGP_IMAGE] Image already exists: {key}")
-        return True
-    except s3_client.exceptions.NoSuchKey:
-        print(f"[OGP_IMAGE] Image does not exist: {key}")
-        return False
+        response = s3_client.list_objects_v2(Bucket=S3_BUCKET, Prefix=prefix)
+        if 'Contents' in response:
+            keys = [{'Key': obj['Key']} for obj in response['Contents']]
+            if keys:
+                s3_client.delete_objects(Bucket=S3_BUCKET, Delete={'Objects': keys})
+                print(f"[OGP_IMAGE] Deleted {len(keys)} old images from {prefix}")
     except Exception as e:
-        print(f"[OGP_IMAGE] Error checking S3: {str(e)}")
-        return False
+        print(f"[WARN] Failed to delete old images: {str(e)}")
 
 
 def save_to_s3(png_data: bytes, handle: str, network: str) -> str:
-    key = f"ogp/{handle}/{network}.png"
+    delete_old_images(handle, network)
+
+    timestamp = int(time.time())
+    key = f"ogp/{handle}/{network}/{timestamp}.png"
 
     try:
         s3_client.put_object(
@@ -305,13 +307,6 @@ def handle_generate_ogp_image(query_params: Dict) -> Dict:
             return build_response(400, {
                 "error": "Missing required parameters",
                 "required": ["handle", "network"]
-            })
-
-        if check_s3_exists(handle, network):
-            return build_response(200, {
-                "status": "exists",
-                "path": f"/ogp/{handle}/{network}.png",
-                "url": f"https://d1g3djqpjf3j38.cloudfront.net/ogp/{handle}/{network}.png"
             })
 
         png_data = generate_share_image(
