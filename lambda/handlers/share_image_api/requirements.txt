@@ -1,6 +1,0 @@
-Pillow
-requests
-boto3
-psutil
-WeasyPrint
-pdf2image

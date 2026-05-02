@@ -149,21 +149,6 @@ export class BlueskySigmaStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_MONTH,
     });
 
-    // === Lambda: Share Image API (Docker Image with Chromium) ===
-    const shareImageLambda = new lambda.DockerImageFunction(this, 'ShareImageLambda', {
-      functionName: 'bluesky-sigma-share-image',
-      code: lambda.DockerImageCode.fromImageAsset(path.join(__dirname, '../../lambda/handlers/share_image_api')),
-      role: lambdaExecutionRole,
-      timeout: cdk.Duration.minutes(5),
-      memorySize: 3008,  // Max CPU (2 vCPU) for faster image processing
-      reservedConcurrentExecutions: 10,  // Limit to 10 concurrent executions
-      environment: {
-        S3_BUCKET: graphDataBucket.bucketName,
-        S3_PREFIX: 'sigma-graph/',
-      },
-      logRetention: logs.RetentionDays.ONE_MONTH,
-    });
-
     // === Lambda: OGP Image API (Docker Image with Chromium) ===
     const ogpImageLambda = new lambda.DockerImageFunction(this, 'OgpImageLambda', {
       functionName: 'bluesky-sigma-ogp-image',
@@ -197,14 +182,12 @@ export class BlueskySigmaStack extends cdk.Stack {
     });
 
 
-    // /api/user/{handle}/top-post and /api/user/{handle}/share-image
+    // /api/user/{handle}/top-post
     const apiResource = api.root.addResource('api');
     const userResource = apiResource.addResource('user');
     const handleResource = userResource.addResource('{handle}');
     const topPostResource = handleResource.addResource('top-post');
     topPostResource.addMethod('GET', new apigateway.LambdaIntegration(topPostLambda));
-    const shareImageResource = handleResource.addResource('share-image');
-    shareImageResource.addMethod('GET', new apigateway.LambdaIntegration(shareImageLambda));
 
     // /api/ogp/generate
     const ogpResource = apiResource.addResource('ogp');
@@ -395,11 +378,6 @@ function handler(event) {
     new cdk.CfnOutput(this, 'TopPostLambdaName', {
       value: topPostLambda.functionName,
       description: 'Top post API Lambda function name',
-    });
-
-    new cdk.CfnOutput(this, 'ShareImageLambdaName', {
-      value: shareImageLambda.functionName,
-      description: 'Share image API Lambda function name',
     });
 
     new cdk.CfnOutput(this, 'OgpImageLambdaName', {

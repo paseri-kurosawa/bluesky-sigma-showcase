@@ -6,14 +6,12 @@ import requests
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict
-from io import BytesIO
 from playwright.sync_api import sync_playwright
 
 s3_client = boto3.client('s3')
 JST = timezone(timedelta(hours=9))
 
 S3_BUCKET = os.environ.get('S3_BUCKET', 'bluesky-sigma-showcase-878311109818')
-S3_PREFIX = os.environ.get('S3_PREFIX', 'sigma-graph/')
 
 _playwright = None
 
