@@ -76,16 +76,6 @@ bluesky-sigma-showcase/
 
 ---
 
-## 対象カテゴリ
-
-| カテゴリ | ハッシュタグ |
-|---------|------------|
-| VTuber | おはようvtuber, vtuber, おはようvライバー, 新人vtuber, vtuber準備中, vtuber推し探しにどうぞ |
-| イラスト | イラスト, aiイラスト, illustration, aiart, aiillustration, 絵描きさんと繋がりたい |
-| 食 | 青空ごはん部, 自炊班, 外食班, おうちごはん |
-
----
-
 ## セットアップ
 
 ### 前提条件
