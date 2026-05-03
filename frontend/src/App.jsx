@@ -687,7 +687,7 @@ export default function App() {
               className="stats-btn"
               title="統計情報"
             >
-              グラフ情報
+              ランキング
             </button>
           )}
         </h1>
@@ -775,7 +775,7 @@ export default function App() {
                     className={`stats-tab ${statsTab === 'ranking' ? 'active' : ''}`}
                     onClick={() => setStatsTab('ranking')}
                   >
-                    ランキング
+                    ユーザー
                   </button>
                   <button
                     className={`stats-tab ${statsTab === 'hashtags' ? 'active' : ''}`}
@@ -915,10 +915,10 @@ export default function App() {
                           ハッシュタグがありません
                         </div>
                       ) : (
-                        graphData.metadata.hashtags.map(({ tag, nodeCount }) => (
+                        [...graphData.metadata.hashtags].sort((a, b) => b.nodeCount - a.nodeCount).map(({ tag, nodeCount, activeCount }, index) => (
                           <div
                             key={tag}
-                            className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''}`}
+                            className={`hashtag-filter-item ${selectedFilterHashtag === tag ? 'selected' : ''} ${activeCount > 0 ? 'active-tag' : ''}`}
                             onClick={() => {
                               if (selectedFilterHashtag === tag) {
                                 setSelectedFilterHashtag(null);
@@ -927,12 +927,38 @@ export default function App() {
                               }
                             }}
                           >
-                            <span className="hashtag-filter-name">
-                              #{tag}
-                            </span>
-                            <span className="hashtag-filter-count">
-                              {nodeCount} ノード
-                            </span>
+                            <div className="hashtag-filter-header">
+                              <span className="hashtag-filter-rank">{index + 1}位</span>
+                              <span className="hashtag-filter-name">#{tag}</span>
+                            </div>
+                            <div className="hashtag-filter-row-stats">
+                              <span className="hashtag-filter-count">
+                                <strong>{nodeCount}</strong> ノード
+                              </span>
+                              {activeCount > 0 && (
+                                <span className="hashtag-hot-badge"><strong>{activeCount}</strong>人がアクティブ</span>
+                              )}
+                            </div>
+                            <div className="hashtag-filter-row-bottom">
+                              <a
+                                className="hashtag-post-btn"
+                                href={`https://bsky.app/intent/compose?text=${encodeURIComponent('#' + tag + ' ')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Blueskyでポスト
+                              </a>
+                              <a
+                                className="hashtag-post-btn x-post-btn"
+                                href={`https://x.com/intent/tweet?text=${encodeURIComponent('#' + tag + ' ')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Xでポスト
+                              </a>
+                            </div>
                           </div>
                         ))
                       )}

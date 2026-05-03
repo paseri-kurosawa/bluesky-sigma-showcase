@@ -315,14 +315,24 @@ def generate_graph_json(
 
     # Extract and count all unique hashtags from nodes
     hashtag_counts = {}
+    hashtag_active_counts = {}
+    now = get_jst_now()
     for node in nodes:
+        last_post = node.get("lastPostAt", "")
+        is_active = False
+        if last_post:
+            try:
+                diff = (now - datetime.fromisoformat(last_post)).total_seconds()
+                is_active = diff <= 7200
+            except (ValueError, TypeError):
+                pass
         for tag in node.get("hashtags", []):
-            if tag not in hashtag_counts:
-                hashtag_counts[tag] = 0
-            hashtag_counts[tag] += 1
+            hashtag_counts[tag] = hashtag_counts.get(tag, 0) + 1
+            if is_active:
+                hashtag_active_counts[tag] = hashtag_active_counts.get(tag, 0) + 1
 
     hashtags_list = [
-        {"tag": tag, "nodeCount": count}
+        {"tag": tag, "nodeCount": count, "activeCount": hashtag_active_counts.get(tag, 0)}
         for tag, count in sorted(hashtag_counts.items())
     ]
 
@@ -422,6 +432,29 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
     merged_density = merged_edge_count / (merged_node_count * (merged_node_count - 1)) if merged_node_count > 1 else 0
     merged_average_degree = (merged_edge_count * 2) / merged_node_count if merged_node_count > 0 else 0
 
+    # Recompute hashtag counts and active counts from merged nodes
+    hashtag_counts = {}
+    hashtag_active_counts = {}
+    now = get_jst_now()
+    for node in merged_nodes:
+        last_post = node.get("lastPostAt", "")
+        is_active = False
+        if last_post:
+            try:
+                diff = (now - datetime.fromisoformat(last_post)).total_seconds()
+                is_active = diff <= 7200
+            except (ValueError, TypeError):
+                pass
+        for tag in node.get("hashtags", []):
+            hashtag_counts[tag] = hashtag_counts.get(tag, 0) + 1
+            if is_active:
+                hashtag_active_counts[tag] = hashtag_active_counts.get(tag, 0) + 1
+
+    hashtags_list = [
+        {"tag": tag, "nodeCount": count, "activeCount": hashtag_active_counts.get(tag, 0)}
+        for tag, count in sorted(hashtag_counts.items())
+    ]
+
     merged_graph = {
         "nodes": merged_nodes,
         "edges": merged_edges_list,
@@ -432,7 +465,8 @@ def merge_with_previous_graph(new_graph: Dict, hashtag: str) -> Dict:
             "nodeCount": merged_node_count,
             "edgeCount": merged_edge_count,
             "density": round(merged_density, 6),
-            "averageDegree": round(merged_average_degree, 2)
+            "averageDegree": round(merged_average_degree, 2),
+            "hashtags": hashtags_list
         }
     }
 
@@ -637,14 +671,24 @@ def merge_hashtags_for_category(category: str, hashtags: List[str]) -> Optional[
 
     # Extract and count all unique hashtags from nodes
     unified_hashtag_counts = {}
+    unified_hashtag_active_counts = {}
+    now = get_jst_now()
     for node in unified_nodes_dict.values():
+        last_post = node.get("lastPostAt", "")
+        is_active = False
+        if last_post:
+            try:
+                diff = (now - datetime.fromisoformat(last_post)).total_seconds()
+                is_active = diff <= 7200
+            except (ValueError, TypeError):
+                pass
         for tag in node.get("hashtags", []):
-            if tag not in unified_hashtag_counts:
-                unified_hashtag_counts[tag] = 0
-            unified_hashtag_counts[tag] += 1
+            unified_hashtag_counts[tag] = unified_hashtag_counts.get(tag, 0) + 1
+            if is_active:
+                unified_hashtag_active_counts[tag] = unified_hashtag_active_counts.get(tag, 0) + 1
 
     unified_hashtags_list = [
-        {"tag": tag, "nodeCount": count}
+        {"tag": tag, "nodeCount": count, "activeCount": unified_hashtag_active_counts.get(tag, 0)}
         for tag, count in sorted(unified_hashtag_counts.items())
     ]
 

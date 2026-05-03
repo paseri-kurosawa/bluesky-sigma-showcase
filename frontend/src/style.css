@@ -714,21 +714,72 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  max-height: 400px;
   overflow-y: auto;
 }
 
 .hashtag-filter-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.5rem;
   background: white;
   border: 2px solid #eee;
   border-radius: 3px;
   cursor: pointer;
   transition: all 0.2s;
-  font-size: 0.7rem;
+  font-size: 0.85rem;
+}
+
+.hashtag-filter-row-top {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.hashtag-filter-row-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hashtag-filter-row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hashtag-post-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  background: #1da1f2;
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.hashtag-hot-badge {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #999;
+}
+
+.hashtag-hot-badge strong {
+  font-weight: 700;
+  color: #ff6b4a;
+}
+
+.hashtag-post-btn:hover {
+  background: #0d8ecf;
+}
+
+.hashtag-post-btn.x-post-btn {
+  background: #000;
+}
+
+.hashtag-post-btn.x-post-btn:hover {
+  background: #333;
 }
 
 .hashtag-filter-item:hover {
@@ -736,23 +787,45 @@ body {
   background: #f5f9ff;
 }
 
+.hashtag-filter-item.active-tag {
+  border-color: #ffb8a8;
+}
+
 .hashtag-filter-item.selected {
   border-color: #1da1f2;
   background: #e3f2fd;
 }
 
+.hashtag-filter-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 0.1rem;
+}
+
+.hashtag-filter-rank {
+  font-weight: bold;
+  color: #1da1f2;
+  font-size: 0.7rem;
+}
+
 .hashtag-filter-name {
   font-weight: 600;
   color: #333;
-  flex: 1;
+  font-size: 0.85rem;
 }
 
 .hashtag-filter-count {
-  font-size: 0.65rem;
-  color: #666;
-  background: #f5f5f5;
-  padding: 0.2rem 0.4rem;
-  border-radius: 3px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #999;
+}
+
+.hashtag-filter-count strong {
+  font-weight: 700;
+  color: #333;
 }
 
 .hashtag-filter-item.selected .hashtag-filter-count {
