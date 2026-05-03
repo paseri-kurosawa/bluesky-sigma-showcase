@@ -4,6 +4,27 @@ import Graph from 'graphology';
 import { random } from 'graphology-layout';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
 
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+function getNodeColor(lastPostAt, size) {
+  const isActive = lastPostAt && ((new Date() - new Date(lastPostAt)) / (1000 * 60 * 60)) <= 2;
+  if (isActive) return '#ff6b4a';
+  const t = Math.max(0, Math.min(1, (size - 2) / 8));
+  const saturation = 25 + t * 75;
+  const lightness = 65 + t * 0;
+  return hslToHex(50, saturation, lightness);
+}
+
 export default function App() {
   const containerRef = useRef(null);
   const sigmaRef = useRef(null);
@@ -84,7 +105,8 @@ export default function App() {
 
     // Reset all colors
     g.forEachNode(n => {
-      g.setNodeAttribute(n, 'color', '#f5d963');
+      const attrs = g.getNodeAttributes(n);
+      g.setNodeAttribute(n, 'color', getNodeColor(attrs.lastPostAt, attrs.size));
     });
     g.forEachEdge(e => {
       const edgeData = g.getEdgeAttributes(e);
@@ -335,7 +357,8 @@ export default function App() {
 
       // Reset all nodes and edges to original colors
       graph.forEachNode(n => {
-        graph.setNodeAttribute(n, 'color', '#f5d963');
+        const attrs = graph.getNodeAttributes(n);
+        graph.setNodeAttribute(n, 'color', getNodeColor(attrs.lastPostAt, attrs.size));
       });
       graph.forEachEdge(e => {
         const edgeData = graph.getEdgeAttributes(e);
@@ -401,20 +424,10 @@ export default function App() {
     const graph = sigmaRef.current.getGraph();
 
     if (!selectedFilterHashtag) {
-      // No filter: reset all nodes to original colors based on lastPostAt
+      // No filter: reset all nodes to original colors based on lastPostAt and size
       graph.forEachNode(n => {
         const nodeAttrs = graph.getNodeAttributes(n);
-        let nodeColor = '#f5d963';
-        if (nodeAttrs.lastPostAt) {
-          const lastPostTime = new Date(nodeAttrs.lastPostAt);
-          const now = new Date();
-          const diffMs = now - lastPostTime;
-          const diffHours = diffMs / (1000 * 60 * 60);
-          if (diffHours <= 2) {
-            nodeColor = '#ff6b4a';
-          }
-        }
-        graph.setNodeAttribute(n, 'color', nodeColor);
+        graph.setNodeAttribute(n, 'color', getNodeColor(nodeAttrs.lastPostAt, nodeAttrs.size));
       });
       // Reset edges
       graph.forEachEdge(e => {
@@ -429,18 +442,7 @@ export default function App() {
         const hasHashtag = nodeHashtags.includes(selectedFilterHashtag);
 
         if (hasHashtag) {
-          // Node has the hashtag: show original color (yellow or orange-red)
-          let nodeColor = '#f5d963';
-          if (nodeAttrs.lastPostAt) {
-            const lastPostTime = new Date(nodeAttrs.lastPostAt);
-            const now = new Date();
-            const diffMs = now - lastPostTime;
-            const diffHours = diffMs / (1000 * 60 * 60);
-            if (diffHours <= 2) {
-              nodeColor = '#ff6b4a';
-            }
-          }
-          graph.setNodeAttribute(n, 'color', nodeColor);
+          graph.setNodeAttribute(n, 'color', getNodeColor(nodeAttrs.lastPostAt, nodeAttrs.size));
         } else {
           // Node doesn't have the hashtag: grayscale
           graph.setNodeAttribute(n, 'color', '#aaa');
@@ -519,19 +521,7 @@ export default function App() {
 
     // Add nodes
     graphData.nodes.forEach((node) => {
-      // Determine node color based on last post time
-      let nodeColor = '#f5d963'; // Default yellow
-      if (node.lastPostAt) {
-        const lastPostTime = new Date(node.lastPostAt);
-        const now = new Date();
-        const diffMs = now - lastPostTime;
-        const diffHours = diffMs / (1000 * 60 * 60);
-
-        // Orange-red if posted within last 2 hours
-        if (diffHours <= 2) {
-          nodeColor = '#ff6b4a';
-        }
-      }
+      const size = Math.max(2, Math.min(10, (node.followersCount || 0) / 200));
 
       graph.addNode(node.id, {
         label: node.displayName,
@@ -543,8 +533,8 @@ export default function App() {
         avatar: node.avatar,
         lastPostAt: node.lastPostAt,
         hashtags: node.hashtags || [],
-        size: Math.max(2, Math.min(10, (node.followersCount || 0) / 200)),
-        color: nodeColor,
+        size,
+        color: getNodeColor(node.lastPostAt, size),
         x: Math.random(),
         y: Math.random(),
       });
@@ -620,20 +610,7 @@ export default function App() {
         // Reset all nodes and edges to original colors
         graph.forEachNode(n => {
           const nodeAttrs = graph.getNodeAttributes(n);
-          // Determine color based on last post time
-          let nodeColor = '#f5d963'; // Default yellow
-          if (nodeAttrs.lastPostAt) {
-            const lastPostTime = new Date(nodeAttrs.lastPostAt);
-            const now = new Date();
-            const diffMs = now - lastPostTime;
-            const diffHours = diffMs / (1000 * 60 * 60);
-
-            // Orange-red if posted within last 2 hours
-            if (diffHours <= 2) {
-              nodeColor = '#ff6b4a';
-            }
-          }
-          graph.setNodeAttribute(n, 'color', nodeColor);
+          graph.setNodeAttribute(n, 'color', getNodeColor(nodeAttrs.lastPostAt, nodeAttrs.size));
         });
         graph.forEachEdge(e => {
           const edgeData = graph.getEdgeAttributes(e);
@@ -853,7 +830,8 @@ export default function App() {
 
                                 // Reset all nodes and edges to original colors
                                 graph.forEachNode(n => {
-                                  graph.setNodeAttribute(n, 'color', '#f5d963');
+                                  const attrs = graph.getNodeAttributes(n);
+                                  graph.setNodeAttribute(n, 'color', getNodeColor(attrs.lastPostAt, attrs.size));
                                 });
                                 graph.forEachEdge(e => {
                                   const edgeData = graph.getEdgeAttributes(e);
