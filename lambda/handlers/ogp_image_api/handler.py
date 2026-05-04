@@ -129,7 +129,7 @@ def generate_share_image(display_name: str, handle: str, avatar_url: str,
             font-weight: 900;
             color: #000;
             word-break: break-word;
-            margin-right: 200px;
+            margin-right: 240px;
             margin-bottom: 20px;
             padding-bottom: 20px;
         }}
